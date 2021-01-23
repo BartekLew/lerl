@@ -1,0 +1,8 @@
+6 symbols: args load { print close } 
+***
+source: lerl.lr (size=26/6 symbols)
+
+args load { print close }
+
+***
+

@@ -9,8 +9,8 @@
 typedef unsigned int uint;
 
 typedef struct String {
-    char    *ptr;
-    size_t  len; 
+    const char    *data;
+    size_t        len; 
 } String;
 
 typedef struct Source {
@@ -20,17 +20,26 @@ typedef struct Source {
     int          fd;
 } Source;
 
-typedef struct SourceArray {
-    Source  *data;
-    size_t  len;
-} SourceArray;
+#define ArrayOf(TYPE) \
+    typedef struct TYPE ## Array { \
+        TYPE    *data; \
+        size_t  len; \
+    } TYPE ## Array; \
+    \
+    TYPE ## Array \
+    mk_ ## TYPE ## Array (uint len) { \
+        return (TYPE ## Array) { \
+            .data = malloc (sizeof(TYPE) * len), \
+            .len = len \
+        }; \
+    } \
+    \
+    void free_ ## TYPE ## Array (TYPE ## Array tgt) {\
+        free(tgt.data); \
+    }
 
-SourceArray srcarr (uint len) {
-    return (SourceArray) {
-        .data = malloc (sizeof(Source) * len),
-        .len = len
-    };
-}
+ArrayOf(Source)
+ArrayOf(String)
 
 Source load_file (const char *file_name) {
     struct stat details;
@@ -52,21 +61,92 @@ void close_source (Source src) {
     munmap((void*)src.buff, src.len);
     close(src.fd);
 }
-    
+
+uint count_symbols (Source src) {
+    uint n = 0;
+    uint mod = 0;
+    for(uint i = 0; i < src.len; i++) {
+        if(src.buff[i] == ' '
+        || src.buff[i] == '\t'
+        || src.buff[i] == '\n') {
+            if(mod == 1)
+                mod = 0;
+        } else {
+            if(mod == 0) {
+                n++;
+                mod = 1;
+            }
+        }
+    }
+
+    return n;
+}
+
+off_t load_symbols (Source src, StringArray arr, off_t offset) {
+    uint mod = 1;
+    uint symstart = 0;
+    for (uint i = 0; i < src.len; i++) {
+        if(src.buff[i] == ' '
+        || src.buff[i] == '\t'
+        || src.buff[i] == '\n') {
+            if(mod == 1) {
+                mod = 0;
+                arr.data[offset++] = (String) {
+                    .data =  src.buff + symstart,
+                    .len = i - symstart
+                };
+            }
+        } else {
+            if(mod == 0) {
+                symstart = i;
+                mod = 1;
+            }
+        }
+    }
+
+    if(mod == 1) {
+        arr.data[offset++] = (String) {
+            .data = src.buff + symstart,
+            .len = src.len - symstart
+        };
+    }
+
+    return offset;
+}
+
 int main(int argc, char **argv) {
-    SourceArray sources = srcarr(argc - 1);
+    SourceArray sources = mk_SourceArray(argc - 1);
+    uint symbols_count = 0;
     for(uint i = 0; i < sources.len; i++) {
         sources.data[i] = load_file(argv[i+1]);
+        symbols_count += count_symbols(sources.data[i]);
     }      
 
+    StringArray symbols = mk_StringArray(symbols_count);
+    off_t symarr_off = 0;
     for(uint i = 0; i < sources.len; i++) {
-        printf("source: %s (size=%lu)\n\n%s\n***\n\n",
+        symarr_off = load_symbols (
+            sources.data[i], symbols, symarr_off
+        );
+    }
+
+    printf ("%u symbols: ", symbols_count);
+    for (uint i = 0; i < symbols_count; i++) {
+        printf("%.*s ",  symbols.data[i].len,
+                         symbols.data[i].data);
+    }
+
+    printf("\n***\n");
+
+    for(uint i = 0; i < sources.len; i++) {
+        printf("source: %s (size=%lu/%u symbols)\n\n%s\n***\n\n",
                sources.data[i].name,
                sources.data[i].len,
+               count_symbols(sources.data[i]),
                sources.data[i].buff);
         close_source(sources.data[i]);
     }
-    free(sources.data);
+    free_SourceArray(sources);
 
     return 0;
 }
