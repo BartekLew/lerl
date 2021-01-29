@@ -333,20 +333,10 @@ void verifyArg(List **stack, const char *name) {
     }
 }
 
-void builtin_load (List **stack, List **variables) {
-    verifyArg(stack, "load()");
-
-    Symbol s = pop(stack);
-    if(s.type == ITSELF) {
-        String str = s.word;
-        char buff[str.len+1];
-        buff[str.len] = 0;
-        strncpy(buff, str.data, str.len);
-        *stack = cons((Symbol){.word =str,
-                            .type = SOURCE,
-                            .value.source = load_file(buff)},
-                    *stack);
-    } else if(s.type == ARRAY) {
+Symbol implicitMap(List **stack, List **vars,
+                   void (*self) (List**, List**)) {
+    Symbol s = pop(stack); 
+    if(s.type == ARRAY) {
         List *ans = NULL;
         StringArray arr = s.value.array;
         for(uint i = 0; i < arr.len; i++) {
@@ -355,12 +345,31 @@ void builtin_load (List **stack, List **variables) {
                             .type = ITSELF
                          };
             ans = cons(sym, ans);
-            builtin_load(&ans, variables);
+            self(&ans, vars);
         }
-        *stack = cons((Symbol) {
-                        .word=constString(""),
-                        .type=LIST,
-                        .value.list=ans}, *stack);
+        return (Symbol) {
+                 .word=constString(""),
+                 .type=LIST,
+                 .value.list=ans};
+    } else
+        return s;
+}
+
+void builtin_load (List **stack, List **variables) {
+    verifyArg(stack, "load()");
+
+    Symbol s = implicitMap(stack, variables, &builtin_load);
+    if(s.type == LIST) {
+        *stack = cons(s, *stack);
+    } else if(s.type == ITSELF) {
+        String str = s.word;
+        char buff[str.len+1];
+        buff[str.len] = 0;
+        strncpy(buff, str.data, str.len);
+        *stack = cons((Symbol){.word =str,
+                            .type = SOURCE,
+                            .value.source = load_file(buff)},
+                    *stack);
     } else *stack = cons(Nothing, *stack);
 }
 
