@@ -14,6 +14,17 @@ typedef struct String {
     size_t        len; 
 } String;
 
+String mkString (const char *data) {
+    return (String) {
+        .len = strlen(data),
+        .data = data
+    };
+}
+
+#define constString(STRING) \
+    ((String){.data = STRING, .len = sizeof(STRING)-1})
+
+
 typedef struct Source {
     const char   *name;
     const char   *buff;
@@ -119,14 +130,31 @@ typedef struct Symbol Symbol;
 typedef struct SymbolArray SymbolArray;
 struct Symbol {
     String  word;
-    enum { STRING, FUNCTION } type;
+    enum { STRING, FUNCTION, ARRAY } type;
     union {
-        String string;
-        void   (*function) (StringArray before, StringArray after,
+        String      string;
+        void        (*function) (StringArray before, StringArray after,
                             SymbolArray variables);
+        StringArray array;
     } value;
 };
 ArrayOf(Symbol)
+
+StringArray mkStringArray(size_t size, const char **vals) {
+    StringArray ans = (StringArray) {
+        .len = size,
+        .data = malloc(size * sizeof(String))
+    };
+
+    for(uint i = 0; i < size; i++) {
+        ans.data[i] = (String) {
+            .len = strlen(vals[i]),
+            .data = vals[i] 
+        };
+    }
+
+    return ans;
+}
 
 void fun_load (StringArray before, StringArray after,
                SymbolArray variables) {
@@ -145,19 +173,22 @@ void fun_load (StringArray before, StringArray after,
     printf("\n");
 }
 
-SymbolArray initial_global_symtab (void) {
+SymbolArray initial_global_symtab (int argc, const char **argv) {
     static Symbol symbols[] = {
-        { .word = {.len = 4, .data = "load"},
+        { .word = constString("load"),
           .type = FUNCTION,
-          .value.function = &fun_load }
+          .value.function = &fun_load },
+        { .word = constString("args"),
+          .type = ARRAY }
     };
+    symbols[1].value.array = mkStringArray(argc-1, argv+1);
     return (SymbolArray) {
         .len = sizeof(symbols)/sizeof(Symbol),
         .data = symbols
     };
 }
 
-int main(int argc, char **argv) {
+int main(int argc, const char **argv) {
     SourceArray sources = mk_SourceArray(argc - 1);
     uint symbols_count = 0;
     for(uint i = 0; i < sources.len; i++) {
@@ -173,7 +204,7 @@ int main(int argc, char **argv) {
         );
     }
 
-    SymbolArray globalsym = initial_global_symtab();
+    SymbolArray globalsym = initial_global_symtab(argc, argv);
     for(uint i = 0; i < symbols.len; i++) {
         String current = symbols.data[i];
         for(uint j = 0; j < globalsym.len; j++) {
@@ -192,8 +223,15 @@ int main(int argc, char **argv) {
                                     },
                                     globalsym
                     );
-                } else {
-                    printf("Unknown symbol: %.*s\n", (int)current.len, current.data);
+                } else if (global.type == ARRAY) {
+                    StringArray arr = global.value.array;
+
+                    printf("ARRAY %.*s: ", global.word.len, global.word.data);
+                    for(uint i = 0; i < arr.len; i++) {
+                        String s = arr.data[i];
+                        printf("%.*s ", (int)s.len, s.data);
+                    }
+                    printf("\n");
                 }
             }
         }

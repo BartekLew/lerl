@@ -1,1 +1,1 @@
-args { load print close }
+args load
