@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <string.h>
 
 typedef unsigned int uint;
 
@@ -114,6 +115,48 @@ off_t load_symbols (Source src, StringArray arr, off_t offset) {
     return offset;
 }
 
+typedef struct Symbol Symbol;
+typedef struct SymbolArray SymbolArray;
+struct Symbol {
+    String  word;
+    enum { STRING, FUNCTION } type;
+    union {
+        String string;
+        void   (*function) (StringArray before, StringArray after,
+                            SymbolArray variables);
+    } value;
+};
+ArrayOf(Symbol)
+
+void fun_load (StringArray before, StringArray after,
+               SymbolArray variables) {
+    printf("before: ");
+    for(uint i = 0; i < before.len; i++) {
+        String *s = &(before.data[i]);
+        printf ("%.*s ", (int)s->len, s->data);
+    }
+    printf("\n");
+
+    printf("after: ");
+    for(uint i = 0; i < after.len; i++) {
+        String *s = &(after.data[i]);
+        printf ("%.*s ", (int)s->len, s->data);
+    }
+    printf("\n");
+}
+
+SymbolArray initial_global_symtab (void) {
+    static Symbol symbols[] = {
+        { .word = {.len = 4, .data = "load"},
+          .type = FUNCTION,
+          .value.function = &fun_load }
+    };
+    return (SymbolArray) {
+        .len = sizeof(symbols)/sizeof(Symbol),
+        .data = symbols
+    };
+}
+
 int main(int argc, char **argv) {
     SourceArray sources = mk_SourceArray(argc - 1);
     uint symbols_count = 0;
@@ -130,20 +173,35 @@ int main(int argc, char **argv) {
         );
     }
 
-    printf ("%u symbols: ", symbols_count);
-    for (uint i = 0; i < symbols_count; i++) {
-        printf("%.*s ",  symbols.data[i].len,
-                         symbols.data[i].data);
+    SymbolArray globalsym = initial_global_symtab();
+    for(uint i = 0; i < symbols.len; i++) {
+        String current = symbols.data[i];
+        for(uint j = 0; j < globalsym.len; j++) {
+            Symbol global = globalsym.data[j];
+            if (global.word.len == current.len
+                && strncmp(global.word.data, current.data,
+                           current.len) == 0) {
+                if(global.type == FUNCTION) {
+                    global.value.function((StringArray) {
+                                        .len = i,
+                                        .data = symbols.data
+                                    },
+                                    (StringArray) {
+                                        .len = symbols.len - i -1,
+                                        .data = symbols.data + i + 1
+                                    },
+                                    globalsym
+                    );
+                } else {
+                    printf("Unknown symbol: %.*s\n", (int)current.len, current.data);
+                }
+            }
+        }
     }
 
     printf("\n***\n");
 
     for(uint i = 0; i < sources.len; i++) {
-        printf("source: %s (size=%lu/%u symbols)\n\n%s\n***\n\n",
-               sources.data[i].name,
-               sources.data[i].len,
-               count_symbols(sources.data[i]),
-               sources.data[i].buff);
         close_source(sources.data[i]);
     }
     free_SourceArray(sources);

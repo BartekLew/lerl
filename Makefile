@@ -3,7 +3,7 @@ test: lerl lerl.lr test.exp
 	diff test.out test.exp
 
 lerl: lerl.c
-	gcc -Wall -pedantic -std=c99 $< -o $@
+	gcc -Wall -std=c99 $< -o $@
 
 .PHONY:test
 
