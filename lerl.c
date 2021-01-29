@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <stdbool.h>
 
 typedef unsigned int uint;
 
@@ -13,6 +14,11 @@ typedef struct String {
     const char    *data;
     size_t        len; 
 } String;
+
+bool stringEq (String a, String b) {
+    if(a.len != b.len) {return false;}
+    return strncmp(a.data, b.data, a.len) == 0;   
+}
 
 String mkString (const char *data) {
     return (String) {
@@ -131,12 +137,13 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, FUNCTION, ARRAY } type;
+    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF } type;
     union {
         String      string;
-        void        (*function) (List *before, StringArray after,
-                            SymbolArray variables);
+        void        (*function) (List **stack, List **variables);
         StringArray array;
+        Source      source;
+        List        *list;
     } value;
 };
 ArrayOf(Symbol)
@@ -166,30 +173,7 @@ void printStringArray(String name, StringArray arr) {
     printf("\n");
 }
 
-void printSymbol (Symbol s) {
-    if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
-    else if (s.type == STRING)
-        printf("%.*s ", (int)s.value.string.len, s.value.string.data);
-    else
-        printf ("%.*s ", (int)s.word.len, s.word.data);
-}
-
-void fun_load(List *args, StringArray after, SymbolArray global);
-
-SymbolArray initial_global_symtab (int argc, const char **argv) {
-    static Symbol symbols[] = {
-        { .word = constString("load"),
-          .type = FUNCTION,
-          .value.function = &fun_load },
-        { .word = constString("args"),
-          .type = ARRAY }
-    };
-    symbols[1].value.array = mkStringArray(argc-1, argv+1);
-    return (SymbolArray) {
-        .len = sizeof(symbols)/sizeof(Symbol),
-        .data = symbols
-    };
-}
+void builtin_load(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -208,6 +192,14 @@ List *cons(Symbol value, List *before) {
 void freeList (List *l) {
     if(l == NULL) return;
 
+    if(l->val.type == LIST) {
+        freeList(l->val.value.list);
+    }
+
+    if(l->val.type == SOURCE) {
+        close_source(l->val.value.source);
+    }
+
     if(l->next != NULL) {
         freeList(l->next);
     }
@@ -215,71 +207,154 @@ void freeList (List *l) {
     free(l);
 }
 
-void fun_load (List *args, StringArray after,
-               SymbolArray variables) {
-    printf("args: ");
-    for(List *l = args; l != NULL; l = l->next) {
-        Symbol s = l->val;
-        printSymbol(s);
-        printf(" ");
-    }
-    printf("\n");
+#define Nothing (Symbol) { \
+    .word = constString("nothing"), \
+    .type = ITSELF \
+} \
 
-    printf("after: ");
-    for(uint i = 0; i < after.len; i++) {
-        String *s = &(after.data[i]);
-        printf ("%.*s ", (int)s->len, s->data);
-    }
-    printf("\n");
+#define listSymbol(NAME, VAL) \
+    ((Symbol) { \
+        .word = constString(NAME), \
+        .type = LIST, \
+        .value.list = VAL \
+    }) \
+
+#define sourceSymbol(NAME, VAL) \
+    ((Symbol) { \
+        .word = constString(NAME), \
+        .type = SOURCE, \
+        .value.source = VAL \
+    }) \
+
+#define stringSymbol(NAME, VAL) \
+    ((Symbol) { \
+        .word = constString(NAME), \
+        .type = STRING, \
+        .value.string = VAL \
+    }) \
+
+Symbol pop(List **l) {
+    if(l == NULL)
+        return Nothing;
+
+    Symbol s = (*l)->val;
+
+    List *old = *l;
+    *l = (*l)->next;
+    free(old);
+
+    return s;    
 }
 
-int main(int argc, const char **argv) {
-    SourceArray sources = mk_SourceArray(argc - 1);
-    uint symbols_count = 0;
-    for(uint i = 0; i < sources.len; i++) {
-        sources.data[i] = load_file(argv[i+1]);
-        symbols_count += count_symbols(sources.data[i]);
-    }      
-
-    StringArray symbols = mk_StringArray(symbols_count);
-    off_t symarr_off = 0;
-    for(uint i = 0; i < sources.len; i++) {
-        symarr_off = load_symbols (
-            sources.data[i], symbols, symarr_off
-        );
+Symbol find(String name, List *list) {
+    for(List *l = list; l != NULL; l = l->next) {
+        if(stringEq(name, l->val.word))
+            return l->val;
     }
 
-    SymbolArray globalsym = initial_global_symtab(argc, argv);
+    return Nothing;
+}
+
+void printSymbol (Symbol s) {
+    if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
+    else if (s.type == STRING)
+        printf("%.*s ", (int)s.value.string.len, s.value.string.data);
+    else if (s.type == SOURCE)
+        printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
+    else if (s.type == LIST) {
+        printf("(");
+        for(List *l = s.value.list; l != NULL; l = l->next) {
+            printSymbol(l->val);
+        }
+        printf(")");
+    }
+    else
+        printf ("%.*s ", (int)s.word.len, s.word.data);
+}
+
+List *initial_global_symtab (int argc, const char **argv) {
+    List *ans = NULL;
+    ans = cons( (Symbol) {
+                    .word = constString("load"),
+                    .type = FUNCTION,
+                    .value.function = &builtin_load
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("args"),
+                    .type = ARRAY
+                }, ans);
+    ans->val.value.array = mkStringArray(argc, argv);
+
+    return ans;
+}
+
+
+void run_source(const char *filename, List **vars) {
     List *stack = NULL;
+
+    Source root = load_file(filename);
+    List *sources = cons(sourceSymbol(filename, root), NULL);
+    *vars = cons(listSymbol("sources", sources), *vars);
+
+    uint symbols_count = count_symbols(root);
+
+    StringArray symbols = mk_StringArray(symbols_count);
+    load_symbols (root, symbols, 0);
 
     for(uint i = 0; i < symbols.len; i++) {
         String current = symbols.data[i];
-        for(uint j = 0; j < globalsym.len; j++) {
-            Symbol global = globalsym.data[j];
-            if (global.word.len == current.len
-                && strncmp(global.word.data, current.data,
-                           current.len) == 0) {
-                if(global.type == FUNCTION) {
-                    global.value.function(stack,
-                                    (StringArray) {
-                                        .len = symbols.len - i -1,
-                                        .data = symbols.data + i + 1
-                                    },
-                                    globalsym
-                    );
-                } else if (global.type == ARRAY) {
-                    stack = cons(global, stack);
-                }
-            }
+        Symbol val = find(current, *vars);
+
+        if(val.type == FUNCTION) {
+            val.value.function(&stack, vars);
+        } else if (val.type == ARRAY) {
+            stack = cons(val, stack);
         }
     }
 
-    freeList(stack);
+    printSymbol((Symbol) {
+        .word=constString("stack"),
+        .type=LIST,
+        .value.list = stack});
+    printf("\n");
 
-    for(uint i = 0; i < sources.len; i++) {
-        close_source(sources.data[i]);
+    freeList(stack);
+}
+
+void builtin_load (List **stack, List **variables) {
+    if(stack == NULL || *stack == NULL) {
+        fprintf(stderr, "ERROR: syntax error load(source)\n");
+        exit(1);
     }
-    free_SourceArray(sources);
+
+    Symbol s = pop(stack);
+    if(s.type == ARRAY) {
+        StringArray arr = s.value.array;
+        for(uint i = 0; i < arr.len; i++) {
+            String s = arr.data[i];
+            char buff[s.len+1];
+            buff[s.len] = 0;
+            strncpy(buff, s.data, s.len);
+            *stack = cons((Symbol){.word =s,
+                                   .type = SOURCE,
+                                   .value.source = load_file(buff)},
+                          *stack);
+        }
+    } else *stack = cons(Nothing, *stack);
+}
+
+int main(int argc, const char **argv) {
+    if(argc == 1) {
+        printf("USAGE:\n    %s <source> [args...]\n\n",
+               argv[0]
+        );
+
+        return 1;
+    }
+
+    List *globalsym = initial_global_symtab(argc-2, argv+2);
+    run_source(argv[1], &globalsym);
+    freeList(globalsym);
 
     return 0;
 }
