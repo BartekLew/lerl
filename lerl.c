@@ -174,6 +174,7 @@ void printStringArray(String name, StringArray arr) {
 }
 
 void builtin_load(List **stack, List **variables);
+void builtin_content(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -280,6 +281,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.function = &builtin_load
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("."),
+                    .type = FUNCTION,
+                    .value.function = &builtin_content
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("args"),
                     .type = ARRAY
                 }, ans);
@@ -317,11 +323,13 @@ void run_source(const char *filename, List **vars) {
         }
     }
 
-    printSymbol((Symbol) {
-        .word=constString("stack"),
-        .type=LIST,
-        .value.list = stack});
-    printf("\n");
+    if(stack != NULL) {
+        printSymbol((Symbol) {
+            .word=constString("stack"),
+            .type=LIST,
+            .value.list = stack});
+        printf("\n");
+    }
 
     freeList(stack);
 }
@@ -353,6 +361,21 @@ Symbol implicitMap(List **stack, List **vars,
                  .value.list=ans};
     } else
         return s;
+}
+
+void builtin_content (List **stack, List **variables) {
+    verifyArg(stack, ".");
+
+    Symbol s = implicitMap(stack, variables,
+                           &builtin_content);
+    if(s.type == SOURCE) {
+        Source src = s.value.source;
+        printf("%.*s", (int)src.len, src.buff);
+        close_source(src);
+    } else if(s.type == ITSELF) {
+        String str = s.word;
+        printf("%.*s\n", (int)str.len, str.data);
+    }
 }
 
 void builtin_load (List **stack, List **variables) {

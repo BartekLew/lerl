@@ -1,1 +1,1 @@
-(SOURCE ./lerl.lr )
+./lerl.lr load .
