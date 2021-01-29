@@ -128,12 +128,13 @@ off_t load_symbols (Source src, StringArray arr, off_t offset) {
 
 typedef struct Symbol Symbol;
 typedef struct SymbolArray SymbolArray;
+typedef struct List List;
 struct Symbol {
     String  word;
     enum { STRING, FUNCTION, ARRAY } type;
     union {
         String      string;
-        void        (*function) (StringArray before, StringArray after,
+        void        (*function) (List *before, StringArray after,
                             SymbolArray variables);
         StringArray array;
     } value;
@@ -156,22 +157,24 @@ StringArray mkStringArray(size_t size, const char **vals) {
     return ans;
 }
 
-void fun_load (StringArray before, StringArray after,
-               SymbolArray variables) {
-    printf("before: ");
-    for(uint i = 0; i < before.len; i++) {
-        String *s = &(before.data[i]);
-        printf ("%.*s ", (int)s->len, s->data);
-    }
-    printf("\n");
-
-    printf("after: ");
-    for(uint i = 0; i < after.len; i++) {
-        String *s = &(after.data[i]);
-        printf ("%.*s ", (int)s->len, s->data);
+void printStringArray(String name, StringArray arr) {
+    printf("ARRAY %.*s: ", (int)name.len, name.data);
+    for(uint i = 0; i < arr.len; i++) {
+        String s = arr.data[i];
+        printf("%.*s ", (int)s.len, s.data);
     }
     printf("\n");
 }
+
+void printSymbol (Symbol s) {
+    if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
+    else if (s.type == STRING)
+        printf("%.*s ", (int)s.value.string.len, s.value.string.data);
+    else
+        printf ("%.*s ", (int)s.word.len, s.word.data);
+}
+
+void fun_load(List *args, StringArray after, SymbolArray global);
 
 SymbolArray initial_global_symtab (int argc, const char **argv) {
     static Symbol symbols[] = {
@@ -186,6 +189,48 @@ SymbolArray initial_global_symtab (int argc, const char **argv) {
         .len = sizeof(symbols)/sizeof(Symbol),
         .data = symbols
     };
+}
+
+typedef struct List {
+    Symbol      val;
+    struct List *next;
+} List;
+
+List *cons(Symbol value, List *before) {
+    List *ans = malloc(sizeof(List));
+    *ans = (List) {
+        .val = value,
+        .next = before
+    };
+    return ans;
+}
+
+void freeList (List *l) {
+    if(l == NULL) return;
+
+    if(l->next != NULL) {
+        freeList(l->next);
+    }
+
+    free(l);
+}
+
+void fun_load (List *args, StringArray after,
+               SymbolArray variables) {
+    printf("args: ");
+    for(List *l = args; l != NULL; l = l->next) {
+        Symbol s = l->val;
+        printSymbol(s);
+        printf(" ");
+    }
+    printf("\n");
+
+    printf("after: ");
+    for(uint i = 0; i < after.len; i++) {
+        String *s = &(after.data[i]);
+        printf ("%.*s ", (int)s->len, s->data);
+    }
+    printf("\n");
 }
 
 int main(int argc, const char **argv) {
@@ -205,6 +250,8 @@ int main(int argc, const char **argv) {
     }
 
     SymbolArray globalsym = initial_global_symtab(argc, argv);
+    List *stack = NULL;
+
     for(uint i = 0; i < symbols.len; i++) {
         String current = symbols.data[i];
         for(uint j = 0; j < globalsym.len; j++) {
@@ -213,10 +260,7 @@ int main(int argc, const char **argv) {
                 && strncmp(global.word.data, current.data,
                            current.len) == 0) {
                 if(global.type == FUNCTION) {
-                    global.value.function((StringArray) {
-                                        .len = i,
-                                        .data = symbols.data
-                                    },
+                    global.value.function(stack,
                                     (StringArray) {
                                         .len = symbols.len - i -1,
                                         .data = symbols.data + i + 1
@@ -224,20 +268,13 @@ int main(int argc, const char **argv) {
                                     globalsym
                     );
                 } else if (global.type == ARRAY) {
-                    StringArray arr = global.value.array;
-
-                    printf("ARRAY %.*s: ", global.word.len, global.word.data);
-                    for(uint i = 0; i < arr.len; i++) {
-                        String s = arr.data[i];
-                        printf("%.*s ", (int)s.len, s.data);
-                    }
-                    printf("\n");
+                    stack = cons(global, stack);
                 }
             }
         }
     }
 
-    printf("\n***\n");
+    freeList(stack);
 
     for(uint i = 0; i < sources.len; i++) {
         close_source(sources.data[i]);

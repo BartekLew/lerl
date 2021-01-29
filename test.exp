@@ -1,4 +1,3 @@
-before: args { 
-after: print close } 
-
-***
+args: ARRAY args: ./lerl.lr 
+ 
+after: 
