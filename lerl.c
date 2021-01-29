@@ -137,7 +137,7 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF } type;
+    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, NOTHING } type;
     union {
         String      string;
         void        (*function) (List **stack, List **variables);
@@ -209,7 +209,7 @@ void freeList (List *l) {
 
 #define Nothing (Symbol) { \
     .word = constString("nothing"), \
-    .type = ITSELF \
+    .type = NOTHING \
 } \
 
 #define listSymbol(NAME, VAL) \
@@ -307,7 +307,12 @@ void run_source(const char *filename, List **vars) {
 
         if(val.type == FUNCTION) {
             val.value.function(&stack, vars);
-        } else if (val.type == ARRAY) {
+        } else if (val.type == NOTHING) {
+            stack = cons((Symbol) {
+                            .word = current,
+                            .type = ITSELF
+                    }, stack);
+        } else {
             stack = cons(val, stack);
         }
     }
@@ -321,25 +326,41 @@ void run_source(const char *filename, List **vars) {
     freeList(stack);
 }
 
-void builtin_load (List **stack, List **variables) {
+void verifyArg(List **stack, const char *name) {
     if(stack == NULL || *stack == NULL) {
-        fprintf(stderr, "ERROR: syntax error load(source)\n");
+        fprintf(stderr, "ERROR: syntax error %s\n", name);
         exit(1);
     }
+}
+
+void builtin_load (List **stack, List **variables) {
+    verifyArg(stack, "load()");
 
     Symbol s = pop(stack);
-    if(s.type == ARRAY) {
+    if(s.type == ITSELF) {
+        String str = s.word;
+        char buff[str.len+1];
+        buff[str.len] = 0;
+        strncpy(buff, str.data, str.len);
+        *stack = cons((Symbol){.word =str,
+                            .type = SOURCE,
+                            .value.source = load_file(buff)},
+                    *stack);
+    } else if(s.type == ARRAY) {
+        List *ans = NULL;
         StringArray arr = s.value.array;
         for(uint i = 0; i < arr.len; i++) {
-            String s = arr.data[i];
-            char buff[s.len+1];
-            buff[s.len] = 0;
-            strncpy(buff, s.data, s.len);
-            *stack = cons((Symbol){.word =s,
-                                   .type = SOURCE,
-                                   .value.source = load_file(buff)},
-                          *stack);
+            Symbol sym = (Symbol) {
+                            .word = arr.data[i],
+                            .type = ITSELF
+                         };
+            ans = cons(sym, ans);
+            builtin_load(&ans, variables);
         }
+        *stack = cons((Symbol) {
+                        .word=constString(""),
+                        .type=LIST,
+                        .value.list=ans}, *stack);
     } else *stack = cons(Nothing, *stack);
 }
 
