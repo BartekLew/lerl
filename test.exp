@@ -1,1 +1,2 @@
-./lerl.lr load .
+(load whitespace cut 
+ ./lerl.lr SOURCE ./lerl.lr )

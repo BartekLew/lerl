@@ -175,6 +175,7 @@ void printStringArray(String name, StringArray arr) {
 
 void builtin_load(List **stack, List **variables);
 void builtin_content(List **stack, List **variables);
+void builtin_cut(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -247,6 +248,13 @@ Symbol pop(List **l) {
     return s;    
 }
 
+void pushStr(List **l, String s) {
+    *l = cons((Symbol) {
+                .word = s,
+                .type = STRING,
+                .value.string = s }, *l);
+}
+
 Symbol find(String name, List *list) {
     for(List *l = list; l != NULL; l = l->next) {
         if(stringEq(name, l->val.word))
@@ -260,6 +268,8 @@ void printSymbol (Symbol s) {
     if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
     else if (s.type == STRING)
         printf("%.*s ", (int)s.value.string.len, s.value.string.data);
+    else if (s.type == ITSELF)
+        printf("%.*s ", (int)s.word.len, s.word.data);
     else if (s.type == SOURCE)
         printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
     else if (s.type == LIST) {
@@ -275,6 +285,22 @@ void printSymbol (Symbol s) {
 
 List *initial_global_symtab (int argc, const char **argv) {
     List *ans = NULL;
+
+    StringArray arr = mk_StringArray(3);
+    arr.data[0] = constString(" ");
+    arr.data[1] = constString("\n");
+    arr.data[2] = constString("\t");
+
+    ans = cons( (Symbol) {
+                    .word = constString("cut"),
+                    .type = FUNCTION,
+                    .value.function = &builtin_cut
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("whitespace"),
+                    .type = ARRAY,
+                    .value.array = arr
+                }, ans);
     ans = cons( (Symbol) {
                     .word = constString("load"),
                     .type = FUNCTION,
@@ -341,6 +367,30 @@ void verifyArg(List **stack, const char *name) {
     }
 }
 
+List *getArgs(List **stack, uint count, int types[]) {
+    if(stack == NULL || *stack == NULL) {
+        return NULL;
+    }
+
+    List *cur = *stack;
+    for(uint i = 0; i < count; i++) {
+        if(cur->val.type != types[i]) {
+            return NULL;
+        }
+        cur = cur->next;
+    }
+
+    cur = *stack;
+    for(uint i = 1; i < count; i++) {
+        cur = cur->next;
+    }
+
+    List *args = *stack;
+    *stack = cur->next;
+
+    return args;
+}
+
 Symbol implicitMap(List **stack, List **vars,
                    void (*self) (List**, List**)) {
     Symbol s = pop(stack); 
@@ -394,6 +444,35 @@ void builtin_load (List **stack, List **variables) {
                             .value.source = load_file(buff)},
                     *stack);
     } else *stack = cons(Nothing, *stack);
+}
+
+void builtin_cut (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]){ ARRAY, SOURCE });
+    if(args == NULL) {
+        fprintf(stderr, "wrong args for cut().\n");
+        return;
+    }
+
+    StringArray seps = pop(&args).value.array;
+    Source src = args->val.value.source;
+    args->next = *stack;
+    *stack = args;
+
+    for(uint i = 0; i < src.len; i++) {
+        for(uint j = 0; j < seps.len; j++) {
+            String sep = seps.data[j];
+            if(sep.len > src.len - i) continue;
+            if(strncmp(sep.data, src.buff+i, sep.len) == 0) {
+                String s = {.data = src.buff,
+                            .len = i};
+                pushStr(stack, s);
+                String str = {.data = src.buff+i+sep.len,
+                              .len = src.len - i - sep.len };
+                pushStr(stack, str);
+                return;
+            }
+        } 
+    }
 }
 
 int main(int argc, const char **argv) {
