@@ -367,26 +367,84 @@ void verifyArg(List **stack, const char *name) {
     }
 }
 
+typedef struct Converter {
+    int srcType, dstType;
+    Symbol (*act)(Symbol src, List **sidestack);
+} Converter;
+
+Symbol conv_Source_String(Symbol src, List **sidestack) {
+    Source val = src.value.source;
+    String str = (String){.data = val.buff, .len = val.len};
+
+    *sidestack = cons(src, *sidestack);
+
+    return (Symbol) {
+        .word = src.word,
+        .type = STRING,
+        .value.string = str
+    };
+}
+
+Converter converters[] = (Converter[]) {
+    {.srcType = SOURCE,
+     .dstType = STRING,
+     .act = &conv_Source_String}
+};
+        
+Converter *findConverter(int from, int to) {
+    for(uint i = 0;
+        i < sizeof(converters)/sizeof(Converter);
+        i++) {
+        if(from == converters[i].srcType
+           && to == converters[i].dstType){
+            return converters+i;
+        }
+    }
+
+    return NULL;
+}
+
 List *getArgs(List **stack, uint count, int types[]) {
     if(stack == NULL || *stack == NULL) {
         return NULL;
     }
 
+    Converter *convs[count];
+    for(uint i = 0; i < count; i++) {
+        convs[i] = 0;
+    }
+
     List *cur = *stack;
     for(uint i = 0; i < count; i++) {
-        if(cur->val.type != types[i]) {
+        if(cur->val.type != types[i]
+            && (convs[i] = findConverter(cur->val.type, types[i])) == NULL) {
             return NULL;
         }
         cur = cur->next;
     }
 
+    List *sidestack = NULL;
+    if(convs[0] != NULL) {
+        (*stack)->val = convs[0]->act((*stack)->val, &sidestack);
+    }
+
     cur = *stack;
     for(uint i = 1; i < count; i++) {
         cur = cur->next;
+        if(convs[i] != NULL) {
+            cur->val = convs[i]->act(cur->val, &sidestack);
+        }
     }
 
     List *args = *stack;
     *stack = cur->next;
+
+    if(sidestack != NULL) {
+        List *cur = sidestack;
+        for(; cur->next != NULL; cur = cur->next);
+        cur->next = *stack;
+        *stack = sidestack;
+    }
 
     return args;
 }
@@ -450,24 +508,13 @@ void builtin_cut (List **stack, List **vars) {
     String      srcstr;
     StringArray seps;
 
-    List *args = getArgs(stack, 2, (int[]){ ARRAY, SOURCE });
+    List *args = getArgs(stack, 2, (int[]){ ARRAY, STRING });
     if(args == NULL) {
-        args = getArgs(stack, 2, (int[]){ ARRAY, STRING });
-        if(args == NULL) {
-            fprintf(stderr, "wrong args for cut().\n");
-            return;
-        }
-
-        seps = pop(&args).value.array;
-        srcstr = pop(&args).value.string;
-    } else {
-        seps = pop(&args).value.array;
-        Source src = args->val.value.source;
-        args->next = *stack;
-        *stack = args;
-
-        srcstr = (String){.data = src.buff, .len = src.len};
+        fprintf(stderr, "wrong args for cut().\n");
+        return;
     }
+    seps = pop(&args).value.array;
+    srcstr = pop(&args).value.string;
 
     for(uint i = 0; i < srcstr.len; i++) {
         for(uint j = 0; j < seps.len; j++) {
