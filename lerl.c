@@ -447,27 +447,38 @@ void builtin_load (List **stack, List **variables) {
 }
 
 void builtin_cut (List **stack, List **vars) {
+    String      srcstr;
+    StringArray seps;
+
     List *args = getArgs(stack, 2, (int[]){ ARRAY, SOURCE });
     if(args == NULL) {
-        fprintf(stderr, "wrong args for cut().\n");
-        return;
+        args = getArgs(stack, 2, (int[]){ ARRAY, STRING });
+        if(args == NULL) {
+            fprintf(stderr, "wrong args for cut().\n");
+            return;
+        }
+
+        seps = pop(&args).value.array;
+        srcstr = pop(&args).value.string;
+    } else {
+        seps = pop(&args).value.array;
+        Source src = args->val.value.source;
+        args->next = *stack;
+        *stack = args;
+
+        srcstr = (String){.data = src.buff, .len = src.len};
     }
 
-    StringArray seps = pop(&args).value.array;
-    Source src = args->val.value.source;
-    args->next = *stack;
-    *stack = args;
-
-    for(uint i = 0; i < src.len; i++) {
+    for(uint i = 0; i < srcstr.len; i++) {
         for(uint j = 0; j < seps.len; j++) {
             String sep = seps.data[j];
-            if(sep.len > src.len - i) continue;
-            if(strncmp(sep.data, src.buff+i, sep.len) == 0) {
-                String s = {.data = src.buff,
+            if(sep.len > srcstr.len - i) continue;
+            if(strncmp(sep.data, srcstr.data+i, sep.len) == 0) {
+                String s = {.data = srcstr.data,
                             .len = i};
                 pushStr(stack, s);
-                String str = {.data = src.buff+i+sep.len,
-                              .len = src.len - i - sep.len };
+                String str = {.data = srcstr.data+i+sep.len,
+                              .len = srcstr.len - i - sep.len };
                 pushStr(stack, str);
                 return;
             }
