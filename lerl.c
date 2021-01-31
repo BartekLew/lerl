@@ -176,6 +176,7 @@ void printStringArray(String name, StringArray arr) {
 void builtin_load(List **stack, List **variables);
 void builtin_content(List **stack, List **variables);
 void builtin_cut(List **stack, List **variables);
+void builtin_quote(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -255,6 +256,32 @@ void pushStr(List **l, String s) {
                 .value.string = s }, *l);
 }
 
+List *consList(List *into, List *list) {
+    return cons((Symbol) {
+                    .word = constString(""),
+                    .type = LIST,
+                    .value.list = list }, into);
+}
+
+List *joinLists(List *a, List *b) {
+    List *start = a;
+    while(a->next != NULL) {a = a->next;}
+    a->next = b;
+    return start;
+}
+    
+List *reverseList(List *tgt) {
+    List *last = NULL;
+    while(tgt != NULL) {
+        List *next = tgt->next;
+        tgt->next = last;
+        last = tgt;
+        tgt = next;
+    }
+
+    return last;
+}
+
 Symbol find(String name, List *list) {
     for(List *l = list; l != NULL; l = l->next) {
         if(stringEq(name, l->val.word))
@@ -295,6 +322,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("cut"),
                     .type = FUNCTION,
                     .value.function = &builtin_cut
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("("),
+                    .type = FUNCTION,
+                    .value.function = &builtin_quote
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("whitespace"),
@@ -536,6 +568,26 @@ void builtin_cut (List **stack, List **vars) {
             }
         } 
     }
+}
+
+List *varstash = NULL;
+List *stackstash = NULL;
+
+void builtin_unquote (List **stack, List **vars) {
+    *vars = varstash;
+    *stack = consList(stackstash, reverseList(*stack));
+}
+
+void builtin_quote (List** stack, List **vars) {
+    varstash = *vars; 
+    stackstash = *stack;
+
+    *stack = NULL;
+    *vars = cons((Symbol) {
+/*(*/             .word = constString(")"),
+                  .type = FUNCTION,
+                  .value.function = &builtin_unquote},
+                NULL);
 }
 
 int main(int argc, const char **argv) {
