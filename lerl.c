@@ -350,6 +350,7 @@ void run_source(const char *filename, List **vars) {
     }
 
     if(stack != NULL) {
+        printf("\n");
         printSymbol((Symbol) {
             .word=constString("stack"),
             .type=LIST,
@@ -480,6 +481,10 @@ void builtin_content (List **stack, List **variables) {
         Source src = s.value.source;
         printf("%.*s", (int)src.len, src.buff);
         close_source(src);
+    }
+    else if(s.type == STRING) {
+        String str = s.value.string;
+        printf("%.*s\n", (int)str.len, str.data);
     } else if(s.type == ITSELF) {
         String str = s.word;
         printf("%.*s\n", (int)str.len, str.data);
@@ -521,12 +526,12 @@ void builtin_cut (List **stack, List **vars) {
             String sep = seps.data[j];
             if(sep.len > srcstr.len - i) continue;
             if(strncmp(sep.data, srcstr.data+i, sep.len) == 0) {
-                String s = {.data = srcstr.data,
-                            .len = i};
-                pushStr(stack, s);
                 String str = {.data = srcstr.data+i+sep.len,
                               .len = srcstr.len - i - sep.len };
                 pushStr(stack, str);
+                String s = {.data = srcstr.data,
+                            .len = i};
+                pushStr(stack, s);
                 return;
             }
         } 
