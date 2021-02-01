@@ -137,13 +137,14 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, NOTHING } type;
+    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING } type;
     union {
         String      string;
         void        (*function) (List **stack, List **variables);
         StringArray array;
         Source      source;
         List        *list;
+        bool        boolean;
     } value;
 };
 ArrayOf(Symbol)
@@ -177,6 +178,8 @@ void builtin_load(List **stack, List **variables);
 void builtin_content(List **stack, List **variables);
 void builtin_cut(List **stack, List **variables);
 void builtin_quote(List **stack, List **variables);
+void builtin_isString(List **stack, List **variables);
+void builtin_doWhile(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -263,6 +266,18 @@ List *consList(List *into, List *list) {
                     .value.list = list }, into);
 }
 
+List *consBool(bool val, List *list) {
+    String name;
+    if(val) name = constString("true");
+    else name = constString("false");
+
+    return cons((Symbol) {
+                .word = name,
+                .type = BOOLEAN,
+                .value.boolean = val
+           }, list);
+}
+
 List *joinLists(List *a, List *b) {
     List *start = a;
     while(a->next != NULL) {a = a->next;}
@@ -318,6 +333,16 @@ List *initial_global_symtab (int argc, const char **argv) {
     arr.data[1] = constString("\n");
     arr.data[2] = constString("\t");
 
+    ans = cons( (Symbol) {
+                    .word = constString("doWhile"),
+                    .type = FUNCTION,
+                    .value.function = &builtin_doWhile
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("string?"),
+                    .type = FUNCTION,
+                    .value.function = &builtin_isString
+                }, ans);
     ans = cons( (Symbol) {
                     .word = constString("cut"),
                     .type = FUNCTION,
@@ -504,6 +529,44 @@ Symbol implicitMap(List **stack, List **vars,
         return s;
 }
 
+void eval (List *body, List **stack, List **vars) {
+    for(List *cur = body; cur != NULL; cur = cur->next) {
+        Symbol s = find(cur->val.word, *vars);
+        if(s.type != NOTHING) {
+            if(s.type == FUNCTION) {
+                s.value.function(stack, vars);
+            } else {
+                *stack = cons(s, *stack);
+            }
+        } else {
+            *stack = cons(cur->val, *stack);
+        }
+    }
+}
+
+void builtin_doWhile (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]){LIST, LIST});
+    if(args == NULL) {
+        fprintf(stderr, "wrong arguments for doWhile(List, List)\n");
+        return;
+    }
+
+    List *condition = pop(&args).value.list;
+    List *body = pop(&args).value.list;
+    List *ans;
+
+    do {
+        eval(body, stack, vars);
+        eval(condition, stack, vars);
+        ans = getArgs(stack, 1, (int[]){BOOLEAN});
+        if(ans == NULL) {
+            fprintf(stderr, "Wrong condition for doWhile()\n");
+            printSymbol((*stack)->val);
+            return;
+        }
+    } while (ans->val.value.boolean);
+}
+
 void builtin_content (List **stack, List **variables) {
     verifyArg(stack, ".");
 
@@ -572,6 +635,12 @@ void builtin_cut (List **stack, List **vars) {
 
 List *varstash = NULL;
 List *stackstash = NULL;
+
+void builtin_isString(List **stack, List **vars) {
+    *stack = consBool(*stack != NULL
+                          && (*stack)->val.type == STRING,
+                      *stack);
+}
 
 void builtin_unquote (List **stack, List **vars) {
     *vars = varstash;

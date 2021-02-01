@@ -1,2 +1,12 @@
-
-((./lerl.lr load whitespace cut . whitespace cut . ))
+./lerl.lr
+load
+(
+whitespace
+cut
+.
+)
+(
+string?
+)
+doWhile
+./lerl.lr load ( whitespace cut . ) ( string? ) doWhile
