@@ -137,10 +137,10 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING } type;
+    enum { STRING, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING } type;
     union {
         String      string;
-        void        (*function) (List **stack, List **variables);
+        void        (*builtin) (List **stack, List **variables);
         StringArray array;
         Source      source;
         List        *list;
@@ -180,6 +180,7 @@ void builtin_cut(List **stack, List **variables);
 void builtin_quote(List **stack, List **variables);
 void builtin_isString(List **stack, List **variables);
 void builtin_doWhile(List **stack, List **variables);
+void builtin_defun(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -314,7 +315,7 @@ void printSymbol (Symbol s) {
         printf("%.*s ", (int)s.word.len, s.word.data);
     else if (s.type == SOURCE)
         printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
-    else if (s.type == LIST) {
+    else if (s.type == LIST || s.type == FUNCTION) {
         printf("(");
         for(List *l = s.value.list; l != NULL; l = l->next) {
             printSymbol(l->val);
@@ -335,23 +336,23 @@ List *initial_global_symtab (int argc, const char **argv) {
 
     ans = cons( (Symbol) {
                     .word = constString("doWhile"),
-                    .type = FUNCTION,
-                    .value.function = &builtin_doWhile
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_doWhile
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("string?"),
-                    .type = FUNCTION,
-                    .value.function = &builtin_isString
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_isString
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("cut"),
-                    .type = FUNCTION,
-                    .value.function = &builtin_cut
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_cut
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("("),
-                    .type = FUNCTION,
-                    .value.function = &builtin_quote
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_quote
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("whitespace"),
@@ -360,13 +361,13 @@ List *initial_global_symtab (int argc, const char **argv) {
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("load"),
-                    .type = FUNCTION,
-                    .value.function = &builtin_load
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_load
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("."),
-                    .type = FUNCTION,
-                    .value.function = &builtin_content
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_content
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("args"),
@@ -374,9 +375,32 @@ List *initial_global_symtab (int argc, const char **argv) {
                 }, ans);
     ans->val.value.array = mkStringArray(argc, argv);
 
+    ans = cons( (Symbol) {
+                    .word = constString("fn"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_defun
+                }, ans);
+
     return ans;
 }
 
+
+void eval (List *body, List **stack, List **vars) {
+    for(List *cur = body; cur != NULL; cur = cur->next) {
+        Symbol s = find(cur->val.word, *vars);
+        if(s.type != NOTHING) {
+            if(s.type == BUILTIN) {
+                s.value.builtin(stack, vars);
+            } else if(s.type == FUNCTION) {
+                eval(s.value.list, stack, vars);
+            } else {
+                *stack = cons(s, *stack);
+            }
+        } else {
+            *stack = cons(cur->val, *stack);
+        }
+    }
+}
 
 void run_source(const char *filename, List **vars) {
     List *stack = NULL;
@@ -394,8 +418,10 @@ void run_source(const char *filename, List **vars) {
         String current = symbols.data[i];
         Symbol val = find(current, *vars);
 
-        if(val.type == FUNCTION) {
-            val.value.function(&stack, vars);
+        if(val.type == BUILTIN) {
+            val.value.builtin(&stack, vars);
+        } else if (val.type == FUNCTION) {
+            eval(val.value.list, &stack, vars);
         } else if (val.type == NOTHING) {
             stack = cons((Symbol) {
                             .word = current,
@@ -529,19 +555,18 @@ Symbol implicitMap(List **stack, List **vars,
         return s;
 }
 
-void eval (List *body, List **stack, List **vars) {
-    for(List *cur = body; cur != NULL; cur = cur->next) {
-        Symbol s = find(cur->val.word, *vars);
-        if(s.type != NOTHING) {
-            if(s.type == FUNCTION) {
-                s.value.function(stack, vars);
-            } else {
-                *stack = cons(s, *stack);
-            }
-        } else {
-            *stack = cons(cur->val, *stack);
-        }
+void builtin_defun (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]){ITSELF, LIST});
+    if(args == NULL) {
+        fprintf(stderr, "wrong arguments for fn(Itself, List)\n");
+        return;
     }
+
+    Symbol sym = pop(&args);
+    args->val.type = FUNCTION;
+    args->val.word = sym.word;
+    args->next = *vars;
+    *vars = args;
 }
 
 void builtin_doWhile (List **stack, List **vars) {
@@ -635,6 +660,7 @@ void builtin_cut (List **stack, List **vars) {
 
 List *varstash = NULL;
 List *stackstash = NULL;
+uint quot_depth = 0;
 
 void builtin_isString(List **stack, List **vars) {
     *stack = consBool(*stack != NULL
@@ -643,20 +669,40 @@ void builtin_isString(List **stack, List **vars) {
 }
 
 void builtin_unquote (List **stack, List **vars) {
-    *vars = varstash;
-    *stack = consList(stackstash, reverseList(*stack));
+    if(--quot_depth == 0) {
+        *vars = varstash;
+        *stack = consList(stackstash, reverseList(*stack));
+    } else {
+        *stack = cons((Symbol) {
+  /*(*/         .word = constString(")"), 
+                .type = ITSELF},
+                *stack);
+    }
+}
+
+void builtin_nested_quote (List **stack, List **vars) {
+    quot_depth++;
+    *stack = cons((Symbol) {
+                .word = constString("("), //)
+                .type = ITSELF},
+                *stack);
 }
 
 void builtin_quote (List** stack, List **vars) {
     varstash = *vars; 
     stackstash = *stack;
+    quot_depth++;
 
     *stack = NULL;
     *vars = cons((Symbol) {
 /*(*/             .word = constString(")"),
-                  .type = FUNCTION,
-                  .value.function = &builtin_unquote},
-                NULL);
+                  .type = BUILTIN,
+                  .value.builtin = &builtin_unquote},
+                cons((Symbol) {
+                     .word = constString("("), //)
+                     .type = BUILTIN,
+                     .value.builtin = &builtin_nested_quote},
+                     NULL));
 }
 
 int main(int argc, const char **argv) {

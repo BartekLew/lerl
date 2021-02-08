@@ -1,5 +1,4 @@
-./lerl.lr
-load
+(
 (
 whitespace
 cut
@@ -9,4 +8,13 @@ cut
 string?
 )
 doWhile
-./lerl.lr load ( whitespace cut . ) ( string? ) doWhile
+)
+printToks
+fn
+
+./lerl.lr
+load
+printToks
+( ( whitespace cut . ) ( string? ) doWhile ) printToks fn
+
+./lerl.lr load printToks
