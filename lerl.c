@@ -656,6 +656,7 @@ void builtin_cut (List **stack, List **vars) {
             }
         } 
     }
+    pushStr(stack, srcstr);
 }
 
 List *varstash = NULL;
