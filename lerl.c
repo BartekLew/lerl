@@ -183,6 +183,7 @@ void builtin_doWhile(List **stack, List **variables);
 void builtin_defun(List **stack, List **variables);
 void builtin_stash(List **stack, List **variables);
 void builtin_reverse(List **stack, List **variables);
+void builtin_drop (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -380,6 +381,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("."),
                     .type = BUILTIN,
                     .value.builtin = &builtin_content
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(";"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_drop
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("args"),
@@ -580,6 +586,11 @@ Symbol implicitMap(List **stack, List **vars,
         return s;
 }
 
+void builtin_drop (List **stack, List **vars) {
+    freeList(*stack);
+    *stack = NULL;
+}
+
 void builtin_stash (List **stack, List **vars) {
     List *args = getArgs(stack, 3, (int[]){ ANY, ANY, LIST });
     if(args != NULL) {
@@ -664,10 +675,10 @@ void builtin_content (List **stack, List **variables) {
     }
     else if(s.type == STRING) {
         String str = s.value.string;
-        printf("%.*s\n", (int)str.len, str.data);
+        printf("%.*s ", (int)str.len, str.data);
     } else if(s.type == ITSELF) {
         String str = s.word;
-        printf("%.*s\n", (int)str.len, str.data);
+        printf("%.*s ", (int)str.len, str.data);
     }
 }
 
