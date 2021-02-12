@@ -2,19 +2,21 @@
 (
 whitespace
 cut
-.
+stash
 )
 (
 string?
 )
 doWhile
+reverse
 )
-printToks
+collect
 fn
 
 ./lerl.lr
 load
-printToks
+collect
+.
 
 
 (SOURCE ./lerl.lr )

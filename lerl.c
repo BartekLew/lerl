@@ -137,7 +137,7 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING } type;
+    enum { STRING, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
     union {
         String      string;
         void        (*builtin) (List **stack, List **variables);
@@ -181,6 +181,8 @@ void builtin_quote(List **stack, List **variables);
 void builtin_isString(List **stack, List **variables);
 void builtin_doWhile(List **stack, List **variables);
 void builtin_defun(List **stack, List **variables);
+void builtin_stash(List **stack, List **variables);
+void builtin_reverse(List **stack, List **variables);
 
 typedef struct List {
     Symbol      val;
@@ -334,6 +336,16 @@ List *initial_global_symtab (int argc, const char **argv) {
     arr.data[1] = constString("\n");
     arr.data[2] = constString("\t");
 
+    ans = cons( (Symbol) {
+                    .word = constString("stash"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_stash
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("reverse"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_reverse
+                }, ans);
     ans = cons( (Symbol) {
                     .word = constString("doWhile"),
                     .type = BUILTIN,
@@ -500,7 +512,10 @@ List *getArgs(List **stack, uint count, int types[]) {
 
     List *cur = *stack;
     for(uint i = 0; i < count; i++) {
-        if(cur->val.type != types[i]
+        if(cur == NULL) return NULL;
+
+        if(types[i] != ANY
+            && cur->val.type != types[i]
             && (convs[i] = findConverter(cur->val.type, types[i])) == NULL) {
             return NULL;
         }
@@ -551,8 +566,44 @@ Symbol implicitMap(List **stack, List **vars,
                  .word=constString(""),
                  .type=LIST,
                  .value.list=ans};
+    } else if(s.type == LIST) {
+        List *ans = NULL;
+        for(List *cur = s.value.list; cur != NULL; cur=cur->next) {
+            ans = cons(cur->val, ans);
+            self(&ans, vars);
+        }
+        return (Symbol) {
+                 .word=constString(""),
+                 .type=LIST,
+                 .value.list=ans};
     } else
         return s;
+}
+
+void builtin_stash (List **stack, List **vars) {
+    List *args = getArgs(stack, 3, (int[]){ ANY, ANY, LIST });
+    if(args != NULL) {
+        List *rest = args->next;
+        List *acc = rest->next;
+
+        List **acclist = &(acc->val.value.list);
+        args->next = *acclist;
+        *acclist = args;
+
+        acc->next = *stack;
+        rest->next = acc;
+        *stack = rest;
+
+        return;
+    }
+    args = getArgs(stack, 2, (int[]) { ANY, ANY });
+    if(args != NULL) {
+        List *rest = args->next;
+        args->next = NULL;
+
+        rest->next = consList(*stack,args);
+        *stack = rest;
+    }
 }
 
 void builtin_defun (List **stack, List **vars) {
@@ -567,6 +618,15 @@ void builtin_defun (List **stack, List **vars) {
     args->val.word = sym.word;
     args->next = *vars;
     *vars = args;
+}
+
+void builtin_reverse (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){LIST});
+    if(args != NULL) {
+        args->val.value.list = reverseList(args->val.value.list);
+        args->next = *stack;
+        *stack = args;
+    }
 }
 
 void builtin_doWhile (List **stack, List **vars) {
@@ -656,6 +716,10 @@ void builtin_cut (List **stack, List **vars) {
             }
         } 
     }
+    *stack = cons((Symbol) {
+                .word = constString(""),
+                .type = NOTHING
+            }, *stack);
     pushStr(stack, srcstr);
 }
 
@@ -664,9 +728,19 @@ List *stackstash = NULL;
 uint quot_depth = 0;
 
 void builtin_isString(List **stack, List **vars) {
-    *stack = consBool(*stack != NULL
-                          && (*stack)->val.type == STRING,
-                      *stack);
+    if(*stack == NULL) {
+        consBool(false, *stack);
+        return;
+    }
+    int type = (*stack)->val.type;
+    if(type == NOTHING) {
+        pop(stack);
+        *stack = consBool(false, *stack);
+    } else if (type == STRING) {
+        *stack = consBool(true, *stack);
+    } else {
+        *stack = consBool(false, *stack);
+    }
 }
 
 void builtin_unquote (List **stack, List **vars) {

@@ -1,3 +1,3 @@
-( ( whitespace cut . ) ( string? ) doWhile ) printToks fn
+( ( whitespace cut stash ) ( string? ) doWhile reverse ) collect fn
 
-./lerl.lr load printToks
+./lerl.lr load collect .
