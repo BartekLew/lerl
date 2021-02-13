@@ -1,3 +1,5 @@
 ( ( whitespace cut stash ) ( string? ) doWhile reverse ) collect fn
 
-./lerl.lr load collect .
+( . #nl . ) .ln fn
+
+./lerl.lr load collect .ln

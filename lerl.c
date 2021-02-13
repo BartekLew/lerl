@@ -373,6 +373,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.array = arr
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("#nl"),
+                    .type = STRING,
+                    .value.string = constString("\n")
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("load"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_load
@@ -666,19 +671,40 @@ void builtin_doWhile (List **stack, List **vars) {
 void builtin_content (List **stack, List **variables) {
     verifyArg(stack, ".");
 
-    Symbol s = implicitMap(stack, variables,
-                           &builtin_content);
-    if(s.type == SOURCE) {
+    Symbol s = pop(stack);
+
+    const char *opar = "( ", *cpar = " )";
+
+    if(s.type == LIST) {
+        List *cur = s.value.list;
+        fputs(opar, stdout);
+        while(cur->next != NULL) {
+            builtin_content(&cur, variables);
+            putc(' ', stdout);
+        }
+        builtin_content(&cur, variables); //(
+        fputs(cpar, stdout);
+    } else if(s.type == ARRAY) {
+        StringArray arr = s.value.array;
+        fputs(opar, stdout);
+        uint i = 0;
+        for(; i < arr.len-1; i++) {
+            printf("%.*s ", (int)arr.data[i].len,
+                            arr.data[i].data);
+        }
+        printf("%.*s", (int)arr.data[i].len, arr.data[i].data);
+        fputs(cpar,stdout);
+    } else if(s.type == SOURCE) {
         Source src = s.value.source;
         printf("%.*s", (int)src.len, src.buff);
         close_source(src);
     }
     else if(s.type == STRING) {
         String str = s.value.string;
-        printf("%.*s ", (int)str.len, str.data);
+        printf("%.*s", (int)str.len, str.data);
     } else if(s.type == ITSELF) {
         String str = s.word;
-        printf("%.*s ", (int)str.len, str.data);
+        printf("%.*s", (int)str.len, str.data);
     }
 }
 
