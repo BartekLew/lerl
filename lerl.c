@@ -186,6 +186,7 @@ void builtin_stash(List **stack, List **variables);
 void builtin_reverse(List **stack, List **variables);
 void builtin_drop (List **stack, List **vars);
 void builtin_at (List **stack, List **vars);
+void builtin_eq (List **stack, List **vars);
 
 
 typedef struct List {
@@ -370,6 +371,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_isString
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("="),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_eq
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("cut"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_cut
@@ -393,6 +399,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("#nl"),
                     .type = STRING,
                     .value.string = constString("\n")
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("#paropn"),
+                    .type = INT,
+                    .value.integer = 40
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("load"),
@@ -448,6 +459,14 @@ Symbol strToInt(String src) {
     };
 }
 
+Symbol specialSym(Symbol s) {
+    Symbol sn = strToInt(s.word);
+    if(sn.type == INT) {
+        return sn;
+    } else {
+        return s;
+    }
+}
 
 void eval (List *body, List **stack, List **vars) {
     for(List *cur = body; cur != NULL; cur = cur->next) {
@@ -461,12 +480,7 @@ void eval (List *body, List **stack, List **vars) {
                 *stack = cons(s, *stack);
             }
         } else {
-            Symbol sn = strToInt(cur->val.word);
-            if(sn.type == INT) {
-                *stack = cons(sn, *stack);
-            } else {
-                *stack = cons(cur->val, *stack);
-            }
+            *stack = cons(specialSym(cur->val), *stack);
         }
     }
 }
@@ -492,15 +506,10 @@ void run_source(const char *filename, List **vars) {
         } else if (val.type == FUNCTION) {
             eval(val.value.list, &stack, vars);
         } else if (val.type == NOTHING) {
-            Symbol s = strToInt(current);
-            if(s.type == INT) {
-                stack = cons(s, stack);
-            } else {
-                stack = cons((Symbol) {
-                            .word = current,
-                            .type = ITSELF
-                        }, stack);
-            }
+            stack = cons(specialSym((Symbol){
+                                    .word = current,
+                                    .type = ITSELF}),
+                         stack);
         } else {
             stack = cons(val, stack);
         }
@@ -642,11 +651,37 @@ Symbol implicitMap(List **stack, List **vars,
         return s;
 }
 
+#define argsOrWarn(ARGS) \
+    if(ARGS == NULL) { \
+        fprintf(stderr, "%s: wrong argument list\n", \
+                __FUNCTION__); \
+        return; \
+    }
+
+void builtin_eq (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { ANY, ANY });
+    argsOrWarn(args);
+
+    Symbol a = args->val;
+    Symbol b = args->next->val;
+
+    args->next->next = *stack;
+    *stack = args;
+
+    if(a.type != b.type) {
+        *stack = consBool(false, *stack);       
+    } else if (a.type == INT) {
+        *stack = consBool(a.value.integer == b.value.integer,
+                          *stack);
+    } else {
+        *stack = cons(Nothing, *stack);
+    }
+    
+}
+
 void builtin_at (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { INT, STRING });
-    if(args == NULL) {
-        return;
-    }
+    argsOrWarn(args);
 
     int idx = pop(&args).value.integer;
     String src = args->val.value.string;
@@ -776,6 +811,9 @@ void builtin_content (List **stack, List **variables) {
     } else if(s.type == INT) {
         int n = s.value.integer;
         printf("%d", n);
+    } else if(s.type == BOOLEAN) {
+        bool b = s.value.boolean;
+        printf("%s", b?"true":"false");
     }
 }
 
