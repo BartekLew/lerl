@@ -2,4 +2,4 @@
 
 ( . #nl . ) .ln fn
 
-./lerl.lr load collect .ln
+./lerl.lr load 0 @ .ln ; ; ;

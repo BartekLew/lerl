@@ -137,7 +137,7 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
+    enum { STRING, INT, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
     union {
         String      string;
         void        (*builtin) (List **stack, List **variables);
@@ -145,6 +145,7 @@ struct Symbol {
         Source      source;
         List        *list;
         bool        boolean;
+        int         integer;
     } value;
 };
 ArrayOf(Symbol)
@@ -184,6 +185,8 @@ void builtin_defun(List **stack, List **variables);
 void builtin_stash(List **stack, List **variables);
 void builtin_reverse(List **stack, List **variables);
 void builtin_drop (List **stack, List **vars);
+void builtin_at (List **stack, List **vars);
+
 
 typedef struct List {
     Symbol      val;
@@ -270,6 +273,13 @@ List *consList(List *into, List *list) {
                     .value.list = list }, into);
 }
 
+List *consInt(int val, List *list) {
+    return cons((Symbol) {
+                .word = constString(""),
+                .type = INT,
+                .value.integer = val}, list);
+}
+
 List *consBool(bool val, List *list) {
     String name;
     if(val) name = constString("true");
@@ -324,6 +334,8 @@ void printSymbol (Symbol s) {
             printSymbol(l->val);
         }
         printf(")");
+    } else if (s.type == INT) {
+        printf("%d ", s.value.integer);
     }
     else
         printf ("%.*s ", (int)s.word.len, s.word.data);
@@ -361,6 +373,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("cut"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_cut
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("@"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_at
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("("),
@@ -407,6 +424,30 @@ List *initial_global_symtab (int argc, const char **argv) {
     return ans;
 }
 
+Symbol strToInt(String src) {
+    uint i = 0;
+    bool positive = true;
+    int val = 0;
+    if(src.data[0] == '-') {
+        positive = false;
+         i++;
+    }
+
+    for(; i < src.len; i++) {
+        char c = src.data[i];
+        if(c < '0' || c > '9') {
+            return Nothing;
+        }
+        val = val*10 + c - '0';
+    }
+
+    return (Symbol) {
+            .word = src,
+            .type = INT,
+            .value.integer = (positive)?val:-val
+    };
+}
+
 
 void eval (List *body, List **stack, List **vars) {
     for(List *cur = body; cur != NULL; cur = cur->next) {
@@ -420,7 +461,12 @@ void eval (List *body, List **stack, List **vars) {
                 *stack = cons(s, *stack);
             }
         } else {
-            *stack = cons(cur->val, *stack);
+            Symbol sn = strToInt(cur->val.word);
+            if(sn.type == INT) {
+                *stack = cons(sn, *stack);
+            } else {
+                *stack = cons(cur->val, *stack);
+            }
         }
     }
 }
@@ -446,10 +492,15 @@ void run_source(const char *filename, List **vars) {
         } else if (val.type == FUNCTION) {
             eval(val.value.list, &stack, vars);
         } else if (val.type == NOTHING) {
-            stack = cons((Symbol) {
+            Symbol s = strToInt(current);
+            if(s.type == INT) {
+                stack = cons(s, stack);
+            } else {
+                stack = cons((Symbol) {
                             .word = current,
                             .type = ITSELF
-                    }, stack);
+                        }, stack);
+            }
         } else {
             stack = cons(val, stack);
         }
@@ -591,6 +642,23 @@ Symbol implicitMap(List **stack, List **vars,
         return s;
 }
 
+void builtin_at (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, STRING });
+    if(args == NULL) {
+        return;
+    }
+
+    int idx = pop(&args).value.integer;
+    String src = args->val.value.string;
+    args->next = *stack;
+
+    if(idx >= src.len || idx < 0) {
+        *stack = cons(Nothing, args);
+    } else {
+        *stack = consInt((int)src.data[idx], args);
+    }
+}
+
 void builtin_drop (List **stack, List **vars) {
     freeList(*stack);
     *stack = NULL;
@@ -705,6 +773,9 @@ void builtin_content (List **stack, List **variables) {
     } else if(s.type == ITSELF) {
         String str = s.word;
         printf("%.*s", (int)str.len, str.data);
+    } else if(s.type == INT) {
+        int n = s.value.integer;
+        printf("%d", n);
     }
 }
 
