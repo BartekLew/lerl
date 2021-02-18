@@ -187,6 +187,7 @@ void builtin_reverse(List **stack, List **variables);
 void builtin_drop (List **stack, List **vars);
 void builtin_at (List **stack, List **vars);
 void builtin_eq (List **stack, List **vars);
+void builtin_if (List **stack, List **vars);
 
 
 typedef struct List {
@@ -359,6 +360,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("reverse"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_reverse
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("?"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_if
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("doWhile"),
@@ -657,6 +663,30 @@ Symbol implicitMap(List **stack, List **vars,
                 __FUNCTION__); \
         return; \
     }
+
+void builtin_if (List **stack, List **vars) {
+    List *ifb = NULL, *elseb = NULL;
+    bool which;
+
+    List *args = getArgs(stack, 3, (int[]) { LIST, LIST, BOOLEAN });
+    if(args != NULL) {
+        ifb = pop(&args).value.list;
+        elseb = pop(&args).value.list;
+        which = pop(&args).value.boolean;
+    } else {
+        args = getArgs(stack, 2, (int[]) { LIST, BOOLEAN });
+        argsOrWarn(args);
+        ifb = pop(&args).value.list;
+        which = pop(&args).value.boolean;
+    }
+
+    if(which) {
+        eval(ifb, stack, vars);
+    } else if(elseb != NULL) {
+        eval(elseb, stack, vars);
+    }
+    
+}
 
 void builtin_eq (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { ANY, ANY });
