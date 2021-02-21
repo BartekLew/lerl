@@ -188,6 +188,7 @@ void builtin_drop (List **stack, List **vars);
 void builtin_at (List **stack, List **vars);
 void builtin_eq (List **stack, List **vars);
 void builtin_if (List **stack, List **vars);
+void builtin_match (List **stack, List **vars);
 
 
 typedef struct List {
@@ -385,6 +386,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("cut"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_cut
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("match"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_match
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("@"),
@@ -664,6 +670,47 @@ Symbol implicitMap(List **stack, List **vars,
         return; \
     }
 
+bool symbolEq (Symbol a, Symbol b) {
+    if(a.type != b.type) return false;
+    if(a.type == INT) {
+        return a.value.integer == b.value.integer;
+    } else if (a.type == STRING) {
+        return stringEq(a.value.string, b.value.string);
+    } else {
+        fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
+        return false;
+    }
+}
+
+void builtin_match (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
+    if(args == NULL)
+        return;
+
+    List *rules = pop(&args).value.list;
+    args->next = *stack;
+    *stack = args;
+
+    while(rules->next != NULL) {
+        Symbol ref = find(rules->val.word, *vars);
+        if(symbolEq(ref, (*stack)->val)) {
+            *stack = cons(rules->next->val,
+                          *stack);
+            freeList(rules);
+            return;
+        }
+        List *nextcur = rules->next->next;
+        rules->next->next = NULL;
+        freeList(rules);
+        rules = nextcur;
+    }
+
+    if(rules != NULL)
+        *stack = cons(rules->val, *stack);
+    else
+        *stack = cons(Nothing, *stack);
+}
+
 void builtin_if (List **stack, List **vars) {
     List *ifb = NULL, *elseb = NULL;
     bool which;
@@ -696,7 +743,9 @@ void builtin_eq (List **stack, List **vars) {
     Symbol b = args->next->val;
 
     args->next->next = *stack;
-    *stack = args;
+    *stack = args->next;
+    args->next = NULL;
+    freeList(args);
 
     if(a.type != b.type) {
         *stack = consBool(false, *stack);       

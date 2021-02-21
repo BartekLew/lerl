@@ -3,6 +3,6 @@
 ( . #nl . ) .ln fn
 
 ./lerl.lr load 0 @
-           #paropn =
-                   ( NO )
-                   ( COOL ) ? .ln ; ; ;
+            ( #paropn COOL
+                        NO ) match .ln ;
+                    
