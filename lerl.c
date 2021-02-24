@@ -185,10 +185,12 @@ void builtin_defun(List **stack, List **variables);
 void builtin_stash(List **stack, List **variables);
 void builtin_reverse(List **stack, List **variables);
 void builtin_drop (List **stack, List **vars);
+void builtin_dropOne (List **stack, List **vars);
 void builtin_at (List **stack, List **vars);
 void builtin_eq (List **stack, List **vars);
 void builtin_if (List **stack, List **vars);
 void builtin_match (List **stack, List **vars);
+void builtin_doCounting (List **stack, List **vars);
 
 
 typedef struct List {
@@ -373,6 +375,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_doWhile
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("doCounting"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_doCounting
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("string?"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_isString
@@ -431,6 +438,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString(";"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_drop
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(";1"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_dropOne
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("args"),
@@ -778,6 +790,10 @@ void builtin_drop (List **stack, List **vars) {
     *stack = NULL;
 }
 
+void builtin_dropOne (List **stack, List **vars) {
+    pop(stack);
+}
+
 void builtin_stash (List **stack, List **vars) {
     List *args = getArgs(stack, 3, (int[]){ ANY, ANY, LIST });
     if(args != NULL) {
@@ -827,6 +843,20 @@ void builtin_reverse (List **stack, List **vars) {
     }
 }
 
+void builtin_doCounting (List **stack, List **vars) {
+    List *args = getArgs(stack, 3, (int[]){INT, INT, LIST});
+    argsOrWarn(args);
+
+    int to = pop(&args).value.integer;
+    int from = pop(&args).value.integer;
+    List *commands = pop(&args).value.list;
+
+    for(int i = 0; i <= to; i++) {
+        *stack = consInt(i, *stack);
+        eval(commands, stack, vars);
+    }
+}
+    
 void builtin_doWhile (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]){LIST, LIST});
     if(args == NULL) {
