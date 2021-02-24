@@ -194,7 +194,7 @@ void builtin_doCounting (List **stack, List **vars);
 void builtin_len (List **stack, List **vars);
 void builtin_moveArg (List **stack, List **vars);
 void builtin_assign (List **stack, List **vars);
-
+void builtin_clone (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -423,6 +423,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_moveArg
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("clone"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_clone
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("("),
                     .type = BUILTIN,
                     .value.builtin = &builtin_quote
@@ -441,6 +446,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("#paropn"),
                     .type = INT,
                     .value.integer = 40
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("#parcls"),
+                    .type = INT,
+                    .value.integer = ')'
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("load"),
@@ -511,6 +521,7 @@ Symbol specialSym(Symbol s) {
 }
 
 void eval (List *body, List **stack, List **vars) {
+    List *oldvars = *vars;
     for(List *cur = body; cur != NULL; cur = cur->next) {
         Symbol s = find(cur->val.word, *vars);
         if(s.type != NOTHING) {
@@ -524,6 +535,15 @@ void eval (List *body, List **stack, List **vars) {
         } else {
             *stack = cons(specialSym(cur->val), *stack);
         }
+    }
+    if(*vars != oldvars) {
+        List *cur = *vars;
+        while(cur->next != oldvars) {
+            cur = cur->next;
+        }
+        cur->next = NULL;
+        freeList(*vars);
+        *vars = oldvars;
     }
 }
 
@@ -712,6 +732,12 @@ bool symbolEq (Symbol a, Symbol b) {
     }
 }
 
+void builtin_clone (List **stack, List **vars) {
+    if(*stack != NULL) {
+        *stack = cons((*stack)->val, *stack);
+    }
+}
+
 void builtin_assign (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { ITSELF, ANY });
     argsOrWarn(args);
@@ -726,20 +752,60 @@ void builtin_assign (List **stack, List **vars) {
                     .value = val.value }, *vars);
 }
 
+void evalListExpr(List *listExpr) {
+    String opn = constString("("),
+           cls = constString(")");   
+    List *trace = NULL;
+    List *cur = listExpr;
+    List *last = NULL;
+    while(cur != NULL) {
+        if(stringEq(cur->val.word, opn)) {
+            trace = consList(trace, cur);
+        } else if (stringEq(cur->val.word, cls)) {
+            if(trace == NULL) {
+                freeList(listExpr->next);
+                if(listExpr->val.type == LIST)
+                    freeList(listExpr->val.value.list);
+                listExpr->val = Nothing;
+                return;
+            }
+            pop(&cur);
+            last->next = NULL;
+            List *begining = pop(&trace).value.list;
+            begining->val.word = constString("");
+            begining->val.type = LIST;
+            begining->val.value.list = begining->next;
+            begining->next = cur;
+            last = NULL;
+            continue;
+        }
+
+        last = cur;
+        cur = cur->next;           
+    }
+}
+
 void builtin_match (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
     if(args == NULL)
         return;
 
     List *rules = pop(&args).value.list;
+    evalListExpr(rules);
     args->next = *stack;
     *stack = args;
 
     while(rules->next != NULL) {
         Symbol ref = find(rules->val.word, *vars);
         if(symbolEq(ref, (*stack)->val)) {
-            *stack = cons(rules->next->val,
-                          *stack);
+            if(rules->next->val.word.len == 0
+                && rules->next->val.type == LIST) {
+                eval(rules->next->val.value.list,
+                                   stack, vars);
+            } else {
+                *stack = cons(rules->next->val,
+                              *stack);
+            }
             freeList(rules);
             return;
         }
@@ -749,8 +815,14 @@ void builtin_match (List **stack, List **vars) {
         rules = nextcur;
     }
 
-    if(rules != NULL)
-        *stack = cons(rules->val, *stack);
+    if(rules != NULL){
+        if(rules->val.word.len == 0
+            && rules->val.type == LIST) {
+            eval(pop(&rules).value.list, stack, vars);
+        } else {
+            *stack = cons(pop(&rules), *stack);
+        }
+    }
     else
         *stack = cons(Nothing, *stack);
 }
