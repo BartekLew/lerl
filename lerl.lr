@@ -2,8 +2,11 @@
 
 ( . #nl . ) .ln fn
 
-./lerl.lr load ( @
-                 ( #paropn COOL
-                             NO ) match .ln ;1 )
-               0 10 doCounting ;
+./lerl.lr load 
+             len n assign
+             ( @
+               ( #paropn COOL
+                           NO ) match .ln ;1 )
+             0
+             n doCounting ;
                     

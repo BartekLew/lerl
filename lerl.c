@@ -191,6 +191,9 @@ void builtin_eq (List **stack, List **vars);
 void builtin_if (List **stack, List **vars);
 void builtin_match (List **stack, List **vars);
 void builtin_doCounting (List **stack, List **vars);
+void builtin_len (List **stack, List **vars);
+void builtin_moveArg (List **stack, List **vars);
+void builtin_assign (List **stack, List **vars);
 
 
 typedef struct List {
@@ -403,6 +406,21 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("@"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_at
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("assign"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_assign
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("len"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_len
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">>|"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_moveArg
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("("),
@@ -694,6 +712,20 @@ bool symbolEq (Symbol a, Symbol b) {
     }
 }
 
+void builtin_assign (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { ITSELF, ANY });
+    argsOrWarn(args);
+
+    Symbol name = pop(&args);
+    Symbol val = pop(&args);
+
+
+    *vars = cons((Symbol) {
+                    .word = name.word,
+                    .type = val.type,
+                    .value = val.value }, *vars);
+}
+
 void builtin_match (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
     if(args == NULL)
@@ -785,6 +817,34 @@ void builtin_at (List **stack, List **vars) {
     }
 }
 
+void builtin_len (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]) { STRING });
+    argsOrWarn(args);
+
+    String s = args->val.value.string;
+    args->next = *stack;
+    *stack = consInt(s.len, args);
+}
+
+void builtin_moveArg (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]) { INT });
+    argsOrWarn(args);
+
+    int n = pop(&args).value.integer;
+    uint i = 0;
+    List *cur = *stack;
+    while(i < n && cur != NULL) {
+        cur = cur->next;
+        i++;
+    }
+
+    if(i != n || cur == NULL) {
+        *stack = cons(Nothing, *stack);
+    } else {
+        *stack = cons(cur->val, *stack);
+    }
+}
+
 void builtin_drop (List **stack, List **vars) {
     freeList(*stack);
     *stack = NULL;
@@ -851,7 +911,7 @@ void builtin_doCounting (List **stack, List **vars) {
     int from = pop(&args).value.integer;
     List *commands = pop(&args).value.list;
 
-    for(int i = 0; i <= to; i++) {
+    for(int i = from; i <= to; i++) {
         *stack = consInt(i, *stack);
         eval(commands, stack, vars);
     }
