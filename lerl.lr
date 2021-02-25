@@ -2,13 +2,14 @@
 
 ( . #nl . ) .ln fn
 
-./lerl.lr load 
+./lerl.lr load
              len n assign
+             0
              ( i assign
                i @
                  (  #paropn ( OPEN . i .ln ;1 )
                    #parcls ( CLOSE . i .ln ;1 )
-                                         ( ;1 ) ) match )
-             0
-             n doCounting ;
+                                         ( ;1 ) ) match
+               i 1 + )
+             ( n < ) doWhile ;
                     

@@ -195,6 +195,8 @@ void builtin_len (List **stack, List **vars);
 void builtin_moveArg (List **stack, List **vars);
 void builtin_assign (List **stack, List **vars);
 void builtin_clone (List **stack, List **vars);
+void builtin_plus (List **stack, List **vars);
+void builtin_lt (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -391,6 +393,16 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("="),
                     .type = BUILTIN,
                     .value.builtin = &builtin_eq
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("+"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_plus
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("<"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_lt
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("cut"),
@@ -730,6 +742,32 @@ bool symbolEq (Symbol a, Symbol b) {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+void builtin_lt (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    int a = pop(&args).value.integer;
+    int b = args->val.value.integer;
+
+    args->next = *stack;
+    *stack = args;
+
+    *stack = consBool(a > b, *stack);
+
+    // > is used to make it more intuitve, as stack
+    // is reverse to order in the code.
+
+}
+
+void builtin_plus (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    *stack = consInt(pop(&args).value.integer
+                        + pop(&args).value.integer,
+                     *stack);
 }
 
 void builtin_clone (List **stack, List **vars) {
