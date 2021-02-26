@@ -4,12 +4,15 @@
 
 ./lerl.lr load
              len n assign
-             0
+             0 
              ( i assign
                i @
-                 (  #paropn ( OPEN . i .ln ;1 )
-                   #parcls ( CLOSE . i .ln ;1 )
-                                         ( ;1 ) ) match
+                 ( (       #0 >=
+                     1 >>| #9 <=
+                        2 >>| & ) ( ;1 DIGIT . i .ln ;1 )
+                          #paropn     ( OPEN . i .ln ;1 )
+                          #parcls    ( CLOSE . i .ln ;1 )
+                                                   ( ;1 ) ) match
                i 1 + )
              ( n < ) doWhile ;
                     

@@ -196,7 +196,12 @@ void builtin_moveArg (List **stack, List **vars);
 void builtin_assign (List **stack, List **vars);
 void builtin_clone (List **stack, List **vars);
 void builtin_plus (List **stack, List **vars);
+void builtin_minus (List **stack, List **vars);
 void builtin_lt (List **stack, List **vars);
+void builtin_gt (List **stack, List **vars);
+void builtin_lte (List **stack, List **vars);
+void builtin_gte (List **stack, List **vars);
+void builtin_and (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -395,14 +400,39 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_eq
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("&"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_and
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("+"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_plus
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("-"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_minus
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("<"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_lt
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_gt
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("<="),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_lte
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">="),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_gte
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("cut"),
@@ -524,6 +554,13 @@ Symbol strToInt(String src) {
 }
 
 Symbol specialSym(Symbol s) {
+    if(s.word.len == 2
+        && s.word.data[0] == '#') {
+        return (Symbol) {
+                .word = s.word,
+                .type = INT,
+                .value.integer = (int) s.word.data[1] };
+    }
     Symbol sn = strToInt(s.word);
     if(sn.type == INT) {
         return sn;
@@ -744,6 +781,16 @@ bool symbolEq (Symbol a, Symbol b) {
     }
 }
 
+void builtin_and (List **stack, List **vars) {
+    List *args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
+    argsOrWarn(args);
+
+    bool a = pop(&args).value.boolean;
+    bool b = pop(&args).value.boolean;
+
+    *stack = consBool(a && b, *stack);
+}
+
 void builtin_lt (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { INT, INT });
     argsOrWarn(args);
@@ -758,7 +805,54 @@ void builtin_lt (List **stack, List **vars) {
 
     // > is used to make it more intuitve, as stack
     // is reverse to order in the code.
+}
 
+void builtin_lte (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    int a = pop(&args).value.integer;
+    int b = args->val.value.integer;
+
+    args->next = *stack;
+    *stack = args;
+
+    *stack = consBool(a >= b, *stack);
+
+    // > is used to make it more intuitve, as stack
+    // is reverse to order in the code.
+}
+
+void builtin_gt (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    int a = pop(&args).value.integer;
+    int b = args->val.value.integer;
+
+    args->next = *stack;
+    *stack = args;
+
+    *stack = consBool(a < b, *stack);
+
+    // < is used to make it more intuitve, as stack
+    // is reverse to order in the code.
+}
+
+void builtin_gte (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    int a = pop(&args).value.integer;
+    int b = args->val.value.integer;
+
+    args->next = *stack;
+    *stack = args;
+
+    *stack = consBool(a <= b, *stack);
+
+    // < is used to make it more intuitve, as stack
+    // is reverse to order in the code.
 }
 
 void builtin_plus (List **stack, List **vars) {
@@ -768,6 +862,15 @@ void builtin_plus (List **stack, List **vars) {
     *stack = consInt(pop(&args).value.integer
                         + pop(&args).value.integer,
                      *stack);
+}
+
+void builtin_minus (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    int b = pop(&args).value.integer;
+    int a = pop(&args).value.integer;
+    *stack = consInt(a - b, *stack);
 }
 
 void builtin_clone (List **stack, List **vars) {
@@ -823,6 +926,23 @@ void evalListExpr(List *listExpr) {
     }
 }
 
+bool evalCondexpr (Symbol expr, List **stack, List **vars) {
+    if(stack == NULL) return false;
+
+    if(expr.type == LIST) {
+        eval(expr.value.list, stack, vars);
+        Symbol ret = pop(stack);
+        if(ret.type != BOOLEAN) {
+            fprintf(stderr, "evalCondexpr() wrong return value.\n");
+            return false;
+        }
+        return ret.value.boolean;
+    } else {
+        Symbol ref = find(expr.word, *vars);
+        return symbolEq(ref, (*stack)->val);
+    }
+}
+
 void builtin_match (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
     if(args == NULL)
@@ -834,8 +954,7 @@ void builtin_match (List **stack, List **vars) {
     *stack = args;
 
     while(rules->next != NULL) {
-        Symbol ref = find(rules->val.word, *vars);
-        if(symbolEq(ref, (*stack)->val)) {
+        if(evalCondexpr(rules->val, stack, vars)) {
             if(rules->next->val.word.len == 0
                 && rules->next->val.type == LIST) {
                 eval(rules->next->val.value.list,
@@ -943,15 +1062,18 @@ void builtin_moveArg (List **stack, List **vars) {
     int n = pop(&args).value.integer;
     uint i = 0;
     List *cur = *stack;
-    while(i < n && cur != NULL) {
+    while(i < n-1 && cur != NULL) {
         cur = cur->next;
         i++;
     }
 
-    if(i != n || cur == NULL) {
+    if(i != n - 1 || cur == NULL || cur->next == NULL) {
         *stack = cons(Nothing, *stack);
     } else {
-        *stack = cons(cur->val, *stack);
+        List *mem = cur->next;
+        cur->next = mem->next;
+        mem->next = *stack;
+        *stack = mem;
     }
 }
 
