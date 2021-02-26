@@ -794,7 +794,34 @@ bool symbolEq (Symbol a, Symbol b) {
 }
 
 void builtin_and (List **stack, List **vars) {
-    List *args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
+    List *args = getArgs(stack, 1, (int[]) { LIST });
+    if(args != NULL) {
+        List *tests = pop(&args).value.list;
+        List *bools = NULL;
+
+        for(List *cur = tests; cur != NULL; cur = cur->next) {
+            evalSym(cur->val, stack, vars);
+            if(stack != NULL && (*stack)->val.type == BOOLEAN) {
+                List *stacktail = (*stack)->next;
+                (*stack)->next = bools;
+                bools = *stack;
+                *stack = stacktail;
+            }
+        }
+
+        while(bools != NULL) {
+            if(pop(&bools).value.boolean != true) {
+                freeList(bools);
+                *stack = consBool(false, *stack);
+                return;
+            }
+        }
+
+        *stack = consBool(true, *stack);
+
+        return;
+    }
+    args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
     argsOrWarn(args);
 
     bool a = pop(&args).value.boolean;
