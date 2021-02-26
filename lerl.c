@@ -533,10 +533,15 @@ Symbol strToInt(String src) {
     uint i = 0;
     bool positive = true;
     int val = 0;
+
+    if(src.len == 0) return Nothing;
+
     if(src.data[0] == '-') {
         positive = false;
          i++;
     }
+
+    if(src.len - i == 0) return Nothing;
 
     for(; i < src.len; i++) {
         char c = src.data[i];
@@ -554,36 +559,43 @@ Symbol strToInt(String src) {
 }
 
 Symbol specialSym(Symbol s) {
-    if(s.word.len == 2
-        && s.word.data[0] == '#') {
-        return (Symbol) {
+    if(s.type == ITSELF) {
+        if(s.word.len == 2
+                && s.word.data[0] == '#') {
+            return (Symbol) {
                 .word = s.word,
-                .type = INT,
-                .value.integer = (int) s.word.data[1] };
-    }
-    Symbol sn = strToInt(s.word);
-    if(sn.type == INT) {
-        return sn;
+                    .type = INT,
+                    .value.integer = (int) s.word.data[1] };
+        }
+        Symbol sn = strToInt(s.word);
+        if(sn.type == INT) {
+            return sn;
+        }
+    } 
+    return s;
+}
+
+void eval (List *body, List **stack, List **vars);
+
+void evalSym (Symbol insym, List **stack, List **vars) {
+    Symbol s = find(insym.word, *vars);
+    if(s.type != NOTHING) {
+        if(s.type == BUILTIN) {
+            s.value.builtin(stack, vars);
+        } else if(s.type == FUNCTION) {
+            eval(s.value.list, stack, vars);
+        } else {
+            *stack = cons(s, *stack);
+        }
     } else {
-        return s;
+        *stack = cons(specialSym(insym), *stack);
     }
 }
 
 void eval (List *body, List **stack, List **vars) {
     List *oldvars = *vars;
     for(List *cur = body; cur != NULL; cur = cur->next) {
-        Symbol s = find(cur->val.word, *vars);
-        if(s.type != NOTHING) {
-            if(s.type == BUILTIN) {
-                s.value.builtin(stack, vars);
-            } else if(s.type == FUNCTION) {
-                eval(s.value.list, stack, vars);
-            } else {
-                *stack = cons(s, *stack);
-            }
-        } else {
-            *stack = cons(specialSym(cur->val), *stack);
-        }
+        evalSym(cur->val, stack, vars);
     }
     if(*vars != oldvars) {
         List *cur = *vars;
