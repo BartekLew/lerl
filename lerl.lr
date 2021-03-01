@@ -2,14 +2,20 @@
 
 ( . #nl . ) .ln fn
 
-./lerl.lr load
+( start assign
+  start ( 1 + ) 
+        ( j assign j @ ( #0 >= #9 <= ;1 j ) & ) doWhile
+  end assign
+  start end substr ) readInt fn
+
+( len 1 >>| ;1 ) len* fn
+
+./lerl.lr load 
              len n assign
              0 
              ( i assign
                i @
-                 ( ( ( #0 >= #9 <= ) & ) ( ;1 DIGIT . i .ln ;1 )
-                                 #paropn     ( OPEN . i .ln ;1 )
-                                 #parcls    ( CLOSE . i .ln ;1 )
-                                                          ( ;1 ) ) match
-               i 1 + )
+                 ( ( ( #0 >= #9 <= ) & )      ( ;1 i readInt clone .ln len* i + )
+                   ( ( #paropn #parcls ) in ) ( ;1 i @ .ln i 1 + )
+                                              ( ;1 i 1 + ) ) match )
              ( n < ) doWhile ;

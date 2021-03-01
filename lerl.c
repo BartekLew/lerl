@@ -202,6 +202,8 @@ void builtin_gt (List **stack, List **vars);
 void builtin_lte (List **stack, List **vars);
 void builtin_gte (List **stack, List **vars);
 void builtin_and (List **stack, List **vars);
+void builtin_substr (List **stack, List **vars);
+void builtin_in (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -307,6 +309,13 @@ List *consBool(bool val, List *list) {
            }, list);
 }
 
+List *consString(String str, List *tail) {
+    return cons((Symbol) {
+                .word = str,
+                .type = STRING,
+                .value.string = str }, tail);
+}
+
 List *joinLists(List *a, List *b) {
     List *start = a;
     while(a->next != NULL) {a = a->next;}
@@ -380,6 +389,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_if
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("in"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_in
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("doWhile"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_doWhile
@@ -393,6 +407,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("string?"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_isString
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("substr"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_substr
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("="),
@@ -791,6 +810,28 @@ bool symbolEq (Symbol a, Symbol b) {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+void builtin_in (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
+    argsOrWarn(args);
+
+    List *options = pop(&args).value.list;
+    Symbol ref = pop(&args);
+
+    for(List *opt = options; opt != NULL; opt = opt->next) {
+        Symbol sym = find(opt->val.word, *vars);
+        if(sym.type == NOTHING) sym = opt->val;
+
+        if(symbolEq(sym, ref)) {
+            *stack = consBool(true,
+                              cons(ref, *stack));
+            return;
+        }
+    }
+
+    *stack = consBool(false,
+                      cons(ref, *stack));
 }
 
 void builtin_and (List **stack, List **vars) {
@@ -1307,6 +1348,22 @@ void builtin_cut (List **stack, List **vars) {
                 .type = NOTHING
             }, *stack);
     pushStr(stack, srcstr);
+}
+
+void builtin_substr(List **stack, List **vars) {
+    List *args = getArgs(stack, 3, (int[]) { INT, INT, STRING });
+    argsOrWarn(args);
+
+    int end = pop(&args).value.integer;
+    int start = pop(&args).value.integer;
+
+    String str = args->val.value.string;
+
+    args->next = *stack;
+    *stack = consString(
+        (String){.data = str.data+start,
+                 .len = end - start },
+        args);
 }
 
 List *varstash = NULL;
