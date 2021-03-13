@@ -203,6 +203,7 @@ void builtin_gt (List **stack, List **vars);
 void builtin_lte (List **stack, List **vars);
 void builtin_gte (List **stack, List **vars);
 void builtin_and (List **stack, List **vars);
+void builtin_or (List **stack, List **vars);
 void builtin_substr (List **stack, List **vars);
 void builtin_in (List **stack, List **vars);
 
@@ -438,6 +439,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("&"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_and
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("or"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_or
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("+"),
@@ -841,6 +847,8 @@ bool symbolEq (Symbol a, Symbol b) {
     if(a.type != b.type) return false;
     if(a.type == INT) {
         return a.value.integer == b.value.integer;
+    } else if(a.type == CHAR) {
+        return a.value.character == b.value.character;
     } else if (a.type == STRING) {
         return stringEq(a.value.string, b.value.string);
     } else if (a.type == ITSELF) {
@@ -871,6 +879,43 @@ void builtin_in (List **stack, List **vars) {
 
     *stack = consBool(false,
                       cons(ref, *stack));
+}
+
+void builtin_or (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]) { LIST });
+    if(args != NULL) {
+        List *tests = pop(&args).value.list;
+        List *bools = NULL;
+
+        for(List *cur = tests; cur != NULL; cur = cur->next) {
+            evalSym(cur->val, stack, vars);
+            if(stack != NULL && (*stack)->val.type == BOOLEAN) {
+                List *stacktail = (*stack)->next;
+                (*stack)->next = bools;
+                bools = *stack;
+                *stack = stacktail;
+            }
+        }
+
+        while(bools != NULL) {
+            if(pop(&bools).value.boolean == true) {
+                freeList(bools);
+                *stack = consBool(true, *stack);
+                return;
+            }
+        }
+
+        *stack = consBool(false, *stack);
+
+        return;
+    }
+    args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
+    argsOrWarn(args);
+
+    bool a = pop(&args).value.boolean;
+    bool b = pop(&args).value.boolean;
+
+    *stack = consBool(a || b, *stack);
 }
 
 void builtin_and (List **stack, List **vars) {
@@ -1141,15 +1186,7 @@ void builtin_eq (List **stack, List **vars) {
     args->next = NULL;
     freeList(args);
 
-    if(a.type != b.type) {
-        *stack = consBool(false, *stack);       
-    } else if (a.type == INT) {
-        *stack = consBool(a.value.integer == b.value.integer,
-                          *stack);
-    } else {
-        *stack = cons(Nothing, *stack);
-    }
-    
+    *stack = consBool(symbolEq(a, b), *stack);
 }
 
 void builtin_at (List **stack, List **vars) {
