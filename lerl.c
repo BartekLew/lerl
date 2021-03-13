@@ -1167,28 +1167,21 @@ void builtin_dropOne (List **stack, List **vars) {
 }
 
 void builtin_stash (List **stack, List **vars) {
-    List *args = getArgs(stack, 3, (int[]){ ANY, ANY, LIST });
+    List *args = getArgs(stack, 2, (int[]) { INT, ANY });
     if(args != NULL) {
-        List *rest = args->next;
-        List *acc = rest->next;
+        int distance = pop(&args).value.integer;
+        Symbol val = pop(&args);
 
-        List **acclist = &(acc->val.value.list);
-        args->next = *acclist;
-        *acclist = args;
+        List *cur = *stack;
+        for(int i = 1; i < distance; i++)
+            cur = cur->next;
 
-        acc->next = *stack;
-        rest->next = acc;
-        *stack = rest;
-
-        return;
-    }
-    args = getArgs(stack, 2, (int[]) { ANY, ANY });
-    if(args != NULL) {
-        List *rest = args->next;
-        args->next = NULL;
-
-        rest->next = consList(*stack,args);
-        *stack = rest;
+        if(cur->next->val.type == LIST) {
+            Symbol *s = &(cur->next->val);
+            s->value.list = cons(val, s->value.list);
+        } else
+           cur->next = consList(cur->next,
+                                cons(val, NULL));
     }
 }
 

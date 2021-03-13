@@ -1,4 +1,4 @@
-( ( whitespace cut stash ) ( string? ) doWhile reverse ) collect fn
+( ( whitespace cut 1 stash ) ( string? ) doWhile reverse ) collect fn
 
 ( . #nl . ) .ln fn
 
