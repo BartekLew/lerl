@@ -15,7 +15,7 @@
              0 
              ( i assign
                i @
-                 ( ( ( #0 >= #9 <= ) & )      ( ;1 i readInt clone .ln len* i + )
-                   ( ( #paropn #parcls ) in ) ( ;1 i @ .ln i 1 + )
+                 ( ( ( #0 >= #9 <= ) & )      ( ;1 i readInt clone 2 stash len* i + )
+                   ( ( #paropn #parcls ) in ) ( ;1 i @ 1 stash i 1 + )
                                               ( ;1 i 1 + ) ) match )
-             ( n < ) doWhile ;
+             ( n < ) doWhile ;1 ;1 .ln ;
