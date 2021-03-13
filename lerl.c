@@ -361,18 +361,24 @@ void printSymbol (Symbol s) {
     else if (s.type == SOURCE)
         printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
     else if (s.type == LIST || s.type == FUNCTION) {
-        printf("(");
+        printf("( ");
         for(List *l = s.value.list; l != NULL; l = l->next) {
             printSymbol(l->val);
         }
         printf(")");
     } else if (s.type == CHAR) {
-        printf("'%c'", s.value.character);
+        printf("'%c' ", s.value.character);
     } else if (s.type == INT) {
         printf("%d ", s.value.integer);
     }
     else
         printf ("%.*s ", (int)s.word.len, s.word.data);
+}
+
+void printList (List *l) {
+    printSymbol((Symbol) {.word = constString(""),
+                          .type = LIST,
+                          .value.list = l });
 }
 
 List *initial_global_symtab (int argc, const char **argv) {
@@ -510,8 +516,18 @@ List *initial_global_symtab (int argc, const char **argv) {
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("#nl"),
-                    .type = STRING,
-                    .value.string = constString("\n")
+                    .type = CHAR,
+                    .value.character = '\n'
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("#space"),
+                    .type = CHAR,
+                    .value.character = ' '
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("#tab"),
+                    .type = CHAR,
+                    .value.character = '\t'
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("#paropn"),
@@ -827,6 +843,8 @@ bool symbolEq (Symbol a, Symbol b) {
         return a.value.integer == b.value.integer;
     } else if (a.type == STRING) {
         return stringEq(a.value.string, b.value.string);
+    } else if (a.type == ITSELF) {
+        return stringEq(a.word, b.word);
     } else {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
@@ -1040,6 +1058,8 @@ bool evalCondexpr (Symbol expr, List **stack, List **vars) {
         return ret.value.boolean;
     } else {
         Symbol ref = find(expr.word, *vars);
+        if(ref.type == NOTHING)
+            return symbolEq(expr, (*stack)->val);
         return symbolEq(ref, (*stack)->val);
     }
 }
@@ -1054,7 +1074,7 @@ void builtin_match (List **stack, List **vars) {
     args->next = *stack;
     *stack = args;
 
-    while(rules->next != NULL) {
+    while(rules != NULL && rules->next != NULL) {
         if(evalCondexpr(rules->val, stack, vars)) {
             if(rules->next->val.word.len == 0
                 && rules->next->val.type == LIST) {
@@ -1274,14 +1294,7 @@ void builtin_content (List **stack, List **variables) {
     const char *opar = "( ", *cpar = " )";
 
     if(s.type == LIST) {
-        List *cur = s.value.list;
-        fputs(opar, stdout);
-        while(cur->next != NULL) {
-            builtin_content(&cur, variables);
-            putc(' ', stdout);
-        }
-        builtin_content(&cur, variables); //(
-        fputs(cpar, stdout);
+        printSymbol(s);
     } else if(s.type == ARRAY) {
         StringArray arr = s.value.array;
         fputs(opar, stdout);
@@ -1307,7 +1320,7 @@ void builtin_content (List **stack, List **variables) {
         int n = s.value.integer;
         printf("%d", n);
     } else if(s.type == CHAR) {
-        printf("'%c'", s.value.character);
+        printf("%c", s.value.character);
     } else if(s.type == BOOLEAN) {
         bool b = s.value.boolean;
         printf("%s", b?"true":"false");

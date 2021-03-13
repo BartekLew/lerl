@@ -10,12 +10,18 @@
 
 ( len 1 >>| ;1 ) len* fn
 
+( ( ( ( #0 >= #9 <= ) & ) ( ;1 Number )
+    ( ( #paropn #parcls ) in ) ( ;1 Spechar )
+    ( ( #nl #space #tab ) in ) ( ;1 White )
+                               ( ;1 Other ) ) match ) chartype fn
+
 ./lerl.lr load 
              len n assign
              0 
              ( i assign
-               i @
-                 ( ( ( #0 >= #9 <= ) & )      ( ;1 i readInt clone 2 stash len* i + )
-                   ( ( #paropn #parcls ) in ) ( ;1 i @ 1 stash i 1 + )
-                                              ( ;1 i 1 + ) ) match )
-             ( n < ) doWhile ;1 ;1 .ln ;
+               i @ chartype 
+                 ( Number  ( ;1 i readInt clone 2 stash len* i + )
+                   Spechar ( ;1 i @ 1 stash i 1 + )
+                   White   ( ;1 i 1 + )
+                           ( ;1 i 1 + ) ) match )
+             ( n < ) doWhile ;1 ;1 reverse .ln ;
