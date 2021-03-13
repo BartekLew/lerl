@@ -137,7 +137,7 @@ typedef struct SymbolArray SymbolArray;
 typedef struct List List;
 struct Symbol {
     String  word;
-    enum { STRING, INT, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
+    enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
     union {
         String      string;
         void        (*builtin) (List **stack, List **variables);
@@ -145,6 +145,7 @@ struct Symbol {
         Source      source;
         List        *list;
         bool        boolean;
+        char        character;
         int         integer;
     } value;
 };
@@ -297,6 +298,13 @@ List *consInt(int val, List *list) {
                 .value.integer = val}, list);
 }
 
+List *consChar(char val, List *list) {
+    return cons((Symbol) {
+                .word = constString(""),
+                .type = CHAR,
+                .value.character = val}, list);
+}
+
 List *consBool(bool val, List *list) {
     String name;
     if(val) name = constString("true");
@@ -358,6 +366,8 @@ void printSymbol (Symbol s) {
             printSymbol(l->val);
         }
         printf(")");
+    } else if (s.type == CHAR) {
+        printf("'%c'", s.value.character);
     } else if (s.type == INT) {
         printf("%d ", s.value.integer);
     }
@@ -694,10 +704,21 @@ Symbol conv_Source_String(Symbol src, List **sidestack) {
     };
 }
 
+Symbol conv_char_int (Symbol src, List **sidestack) {
+    return (Symbol) {
+        .word = src.word,
+        .type = INT,
+        .value.integer = (int)src.value.character
+    };
+}
+
 Converter converters[] = (Converter[]) {
     {.srcType = SOURCE,
      .dstType = STRING,
-     .act = &conv_Source_String}
+     .act = &conv_Source_String},
+    {.srcType = CHAR,
+     .dstType = INT,
+     .act = &conv_char_int}
 };
         
 Converter *findConverter(int from, int to) {
@@ -1122,7 +1143,7 @@ void builtin_at (List **stack, List **vars) {
     if(idx >= src.len || idx < 0) {
         *stack = cons(Nothing, args);
     } else {
-        *stack = consInt((int)src.data[idx], args);
+        *stack = consChar(src.data[idx], args);
     }
 }
 
@@ -1285,6 +1306,8 @@ void builtin_content (List **stack, List **variables) {
     } else if(s.type == INT) {
         int n = s.value.integer;
         printf("%d", n);
+    } else if(s.type == CHAR) {
+        printf("'%c'", s.value.character);
     } else if(s.type == BOOLEAN) {
         bool b = s.value.boolean;
         printf("%s", b?"true":"false");
