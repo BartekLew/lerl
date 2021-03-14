@@ -567,10 +567,9 @@ List *initial_global_symtab (int argc, const char **argv) {
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("args"),
-                    .type = ARRAY
+                    .type = ARRAY,
+                    .value.array = mkStringArray(argc, argv)
                 }, ans);
-    ans->val.value.array = mkStringArray(argc, argv);
-
     ans = cons( (Symbol) {
                     .word = constString("fn"),
                     .type = BUILTIN,
@@ -1191,17 +1190,30 @@ void builtin_eq (List **stack, List **vars) {
 
 void builtin_at (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { INT, STRING });
-    argsOrWarn(args);
+    if(args == NULL) {
+        List *args = getArgs(stack, 2, (int[]) { INT, ARRAY });
+        argsOrWarn(args);
+
+        int idx = pop(&args).value.integer;
+        StringArray sar = args->val.value.array;
+        args->next = *stack;
+
+        if(idx >= sar.len || idx < 0)
+            *stack = cons(Nothing, args);
+        else
+            *stack = consString(sar.data[idx], args);
+
+        return;
+    }
 
     int idx = pop(&args).value.integer;
     String src = args->val.value.string;
     args->next = *stack;
 
-    if(idx >= src.len || idx < 0) {
+    if(idx >= src.len || idx < 0)
         *stack = cons(Nothing, args);
-    } else {
+    else 
         *stack = consChar(src.data[idx], args);
-    }
 }
 
 void builtin_len (List **stack, List **vars) {
@@ -1379,6 +1391,15 @@ void builtin_load (List **stack, List **variables) {
                             .type = SOURCE,
                             .value.source = load_file(buff)},
                     *stack);
+    } else if (s.type == STRING) {
+        String str = s.word;
+        char buff[str.len+1];
+        buff[str.len] = 0;
+        strncpy(buff, str.data, str.len);
+        *stack = cons((Symbol){.word = str,
+                               .type = SOURCE,
+                               .value.source = load_file(buff)},
+                      *stack);
     } else *stack = cons(Nothing, *stack);
 }
 
@@ -1498,8 +1519,8 @@ int main(int argc, const char **argv) {
         return 1;
     }
 
-    List *globalsym = initial_global_symtab(argc-2, argv+2);
-    run_source(argv[1], &globalsym);
+    List *globalsym = initial_global_symtab(argc-1, argv+1);
+    run_source("./lerl.lrc", &globalsym);
     freeList(globalsym);
 
     return 0;

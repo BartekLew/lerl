@@ -1,5 +1,5 @@
-test: lerl lerl.lr test.exp
-	./lerl ./lerl.lr> test.out
+test: lerl lerl.lrc test.exp
+	./lerl ./ex.lr> test.out
 	diff test.out test.exp
 
 lerl: lerl.c
