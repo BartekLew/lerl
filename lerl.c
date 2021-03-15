@@ -206,6 +206,7 @@ void builtin_and (List **stack, List **vars);
 void builtin_or (List **stack, List **vars);
 void builtin_substr (List **stack, List **vars);
 void builtin_in (List **stack, List **vars);
+void builtin_exit (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -476,6 +477,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_gte
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("exit"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_exit
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("cut"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_cut
@@ -628,6 +634,11 @@ Symbol specialSym(Symbol s) {
 void eval (List *body, List **stack, List **vars);
 
 void evalSym (Symbol insym, List **stack, List **vars) {
+    if(stringEq(insym.word, Nothing.word)) {
+        *stack = cons(Nothing, *stack);
+        return;
+    }
+
     Symbol s = find(insym.word, *vars);
     if(s.type != NOTHING) {
         if(s.type == BUILTIN) {
@@ -672,6 +683,12 @@ void run_source(const char *filename, List **vars) {
 
     for(uint i = 0; i < symbols.len; i++) {
         String current = symbols.data[i];
+        
+        if(stringEq(current, Nothing.word)) {
+            stack = cons(Nothing, stack);
+            continue;
+        }
+        
         Symbol val = find(current, *vars);
 
         if(val.type == BUILTIN) {
@@ -852,10 +869,20 @@ bool symbolEq (Symbol a, Symbol b) {
         return stringEq(a.value.string, b.value.string);
     } else if (a.type == ITSELF) {
         return stringEq(a.word, b.word);
+    } else if (a.type == NOTHING) {
+        return true;
     } else {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+void builtin_exit (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]) { INT });
+    argsOrWarn(args);
+
+    int exitCode = pop(&args).value.integer;
+    exit(exitCode);
 }
 
 void builtin_in (List **stack, List **vars) {
@@ -1511,14 +1538,6 @@ void builtin_quote (List** stack, List **vars) {
 }
 
 int main(int argc, const char **argv) {
-    if(argc == 1) {
-        printf("USAGE:\n    %s <source> [args...]\n\n",
-               argv[0]
-        );
-
-        return 1;
-    }
-
     List *globalsym = initial_global_symtab(argc-1, argv+1);
     run_source("./lerl.lrc", &globalsym);
     freeList(globalsym);
