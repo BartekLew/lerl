@@ -669,12 +669,8 @@ void eval (List *body, List **stack, List **vars) {
     }
 }
 
-void run_source(const char *filename, List **vars) {
+void run_source(Source root, List **vars) {
     List *stack = NULL;
-
-    Source root = load_file(filename);
-    List *sources = cons(sourceSymbol(filename, root), NULL);
-    *vars = cons(listSymbol("sources", sources), *vars);
 
     uint symbols_count = count_symbols(root);
 
@@ -1539,7 +1535,7 @@ void builtin_quote (List** stack, List **vars) {
 
 int main(int argc, const char **argv) {
     List *globalsym = initial_global_symtab(argc-1, argv+1);
-    run_source("./lerl.lrc", &globalsym);
+    run_source(load_file("./lerl.lrc"), &globalsym);
     freeList(globalsym);
 
     return 0;
