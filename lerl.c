@@ -76,6 +76,8 @@ Source load_file (const char *file_name) {
 }
 
 void close_source (Source src) {
+    if(src.fd == -1) return;
+    
     munmap((void*)src.buff, src.len);
     close(src.fd);
 }
@@ -1533,9 +1535,16 @@ void builtin_quote (List** stack, List **vars) {
                      NULL));
 }
 
+extern char _binary_lerl_lrc_start;
+extern char _binary_lerl_lrc_end;
+
 int main(int argc, const char **argv) {
     List *globalsym = initial_global_symtab(argc-1, argv+1);
-    run_source(load_file("./lerl.lrc"), &globalsym);
+    run_source((Source) {
+                 .name = "(builtin init)",
+                 .buff = &_binary_lerl_lrc_start,
+                 .len = &_binary_lerl_lrc_end - &_binary_lerl_lrc_start,
+                 .fd = -1} , &globalsym);
     freeList(globalsym);
 
     return 0;
