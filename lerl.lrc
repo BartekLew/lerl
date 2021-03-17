@@ -25,7 +25,7 @@
 ( ( ( ( #nl #space #tab ) in ) ( ;1 White )
     ( ( #0 >= #9 <= ) & )      ( ;1 Number )
     ( #" = )                   ( ;1 Quote )
-    ( ( #paropn #parcls #+ ) in ) ( ;1 Spechar )
+    ( ( #paropn #parcls ) in ) ( ;1 Spechar )
                                ( ;1 Other ) ) match ) chartype fn
 
 args 0 @ load 

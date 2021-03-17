@@ -1,1 +1,4 @@
-"Witaj świecie! To " . 2 ( ;1 2 * ) 1 4 doCounting 10 + .ln
+("void builtin_" 1>>| "(List **stack, List **args)" 3lst reverse) C-builtin-head fn
+((pop .) (empty? not) whileDo ;1) .* fn
+
+"load" C-builtin-head .* #nl .

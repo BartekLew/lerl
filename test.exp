@@ -1,1 +1,1 @@
-Witaj świecie! To 42
+void builtin_load(List **stack, List **args)
