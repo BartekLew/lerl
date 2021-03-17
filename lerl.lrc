@@ -25,7 +25,7 @@
 ( ( ( ( #nl #space #tab ) in ) ( ;1 White )
     ( ( #0 >= #9 <= ) & )      ( ;1 Number )
     ( #" = )                   ( ;1 Quote )
-    ( ( #paropn #parcls ) in ) ( ;1 Spechar )
+    ( ( #paropn #parcls #+ ) in ) ( ;1 Spechar )
                                ( ;1 Other ) ) match ) chartype fn
 
 args 0 @ load 
@@ -34,9 +34,9 @@ args 0 @ load
           0 
           ( i assign
             i @ chartype 
-              ( Number  ( ;1 i readInt clone 2 stash len* i + )
-                Spechar ( ;1 i @ 1 stash i 1 + )
+              ( Number  ( ;1 i readInt clone >int 2 stash len* i + )
+                Spechar ( ;1 i i 1 + substr >sym 1 stash i 1 + )
                 Quote   ( ;1 i readQuote clone 2 stash len* 2 + i + )
                 White   ( ;1 i 1 + )
-                        ( ;1 i readSym clone 2 stash len* i + ) ) match )
-          ( n < ) doWhile ;1 ;1 reverse .ln ;
+                        ( ;1 i readSym clone >sym 2 stash len* i + ) ) match )
+          ( n < ) doWhile ;1 ;1 reverse 1 >>| ;1 1 >>| ;1 !@

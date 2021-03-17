@@ -1,1 +1,1 @@
-(foo bar"booz baz mool" baz32f 64 * 42)
+"Witaj świecie! To " . 2 ( ;1 2 * ) 1 4 doCounting 10 + .ln
