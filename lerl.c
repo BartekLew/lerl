@@ -10,6 +10,8 @@
 
 typedef unsigned int uint;
 
+bool dbg = false;
+
 typedef struct String {
     const char    *data;
     size_t        len; 
@@ -210,6 +212,8 @@ void builtin_or (List **stack, List **vars);
 void builtin_substr (List **stack, List **vars);
 void builtin_in (List **stack, List **vars);
 void builtin_exit (List **stack, List **vars);
+void builtin_dbgon (List **stack, List **vars);
+void builtin_dbgoff (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -485,6 +489,16 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_gte
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("+dbg"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_dbgon
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("-dbg"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_dbgoff
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("exit"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_exit
@@ -642,6 +656,16 @@ Symbol specialSym(Symbol s) {
 void eval (List *body, List **stack, List **vars);
 
 void evalSym (Symbol insym, List **stack, List **vars) {
+    if(dbg) {
+        printf("eval: ");
+        printSymbol(insym);
+        if(*stack) {
+            putc(' ', stdout);
+            printSymbol((*stack)->val);
+        }
+        putc('\n', stdout);
+    }
+
     if(stringEq(insym.word, Nothing.word)) {
         *stack = cons(Nothing, *stack);
         return;
@@ -658,6 +682,12 @@ void evalSym (Symbol insym, List **stack, List **vars) {
         }
     } else {
         *stack = cons(specialSym(insym), *stack);
+    }
+
+    if(dbg && *stack) {
+        printf(" >> ");
+        printSymbol((*stack)->val);
+        putc('\n', stdout);
     }
 }
 
@@ -860,6 +890,7 @@ Symbol implicitMap(List **stack, List **vars,
     if(ARGS == NULL) { \
         fprintf(stderr, "%s: wrong argument list\n", \
                 __FUNCTION__); \
+        exit(1); \
         return; \
     }
 
@@ -879,6 +910,17 @@ bool symbolEq (Symbol a, Symbol b) {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+void builtin_dbgon (List **stack, List **vars) {
+    dbg = true;
+}
+
+void builtin_dbgoff (List **stack, List **vars) {
+    dbg = false;
+    printf("Stack:\n");
+    printList(*stack);
+    printf("\n*************\n");
 }
 
 void builtin_exit (List **stack, List **vars) {
