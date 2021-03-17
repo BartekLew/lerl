@@ -364,7 +364,7 @@ Symbol find(String name, List *list) {
 void printSymbol (Symbol s) {
     if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
     else if (s.type == STRING)
-        printf("%.*s ", (int)s.value.string.len, s.value.string.data);
+        printf("\"%.*s\" ", (int)s.value.string.len, s.value.string.data);
     else if (s.type == ITSELF)
         printf("%.*s ", (int)s.word.len, s.word.data);
     else if (s.type == SOURCE)
