@@ -214,6 +214,9 @@ void builtin_in (List **stack, List **vars);
 void builtin_exit (List **stack, List **vars);
 void builtin_dbgon (List **stack, List **vars);
 void builtin_dbgoff (List **stack, List **vars);
+void builtin_eval (List **stack, List **vars);
+void builtin_toInt (List **stack, List **vars);
+void builtin_toSym (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -439,6 +442,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_substr
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("!@"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_eval
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("="),
                     .type = BUILTIN,
                     .value.builtin = &builtin_eq
@@ -497,6 +505,16 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("-dbg"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_dbgoff
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">int"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_toInt
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">sym"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_toSym
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("exit"),
@@ -910,6 +928,30 @@ bool symbolEq (Symbol a, Symbol b) {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+void builtin_toInt (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){ STRING });
+    argsOrWarn(args);
+
+    *stack = cons(strToInt(pop(&args).value.string), *stack);
+}
+
+void builtin_toSym (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){ STRING });
+    argsOrWarn(args);
+
+    String str = pop(&args).value.string;
+    *stack = cons ((Symbol) { .word = str,
+                              .type = ITSELF },
+                   *stack);
+}
+
+void builtin_eval (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){ LIST });
+    argsOrWarn(args);
+
+    eval(pop(&args).value.list, stack, vars);
 }
 
 void builtin_dbgon (List **stack, List **vars) {
