@@ -1,1 +1,1 @@
-( '(' foo bar baz32f 64 * 42 ')' )
+( '(' "foo" "bar" "booz baz mool" "baz32f" "64" "*" "42" ')' )
