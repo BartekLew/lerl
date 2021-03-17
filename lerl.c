@@ -186,6 +186,7 @@ void builtin_cut(List **stack, List **variables);
 void builtin_quote(List **stack, List **variables);
 void builtin_isString(List **stack, List **variables);
 void builtin_doWhile(List **stack, List **variables);
+void builtin_whileDo(List **stack, List **variables);
 void builtin_defun(List **stack, List **variables);
 void builtin_stash(List **stack, List **variables);
 void builtin_reverse(List **stack, List **variables);
@@ -209,6 +210,7 @@ void builtin_gt (List **stack, List **vars);
 void builtin_lte (List **stack, List **vars);
 void builtin_gte (List **stack, List **vars);
 void builtin_and (List **stack, List **vars);
+void builtin_not (List **stack, List **vars);
 void builtin_or (List **stack, List **vars);
 void builtin_substr (List **stack, List **vars);
 void builtin_in (List **stack, List **vars);
@@ -218,6 +220,9 @@ void builtin_dbgoff (List **stack, List **vars);
 void builtin_eval (List **stack, List **vars);
 void builtin_toInt (List **stack, List **vars);
 void builtin_toSym (List **stack, List **vars);
+void builtin_lst (List **stack, List **vars);
+void builtin_pop (List **stack, List **vars);
+void builtin_isEmpty (List **stack, List **vars);
 
 typedef struct List {
     Symbol      val;
@@ -408,6 +413,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_stash
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("pop"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_stash
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("reverse"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_reverse
@@ -423,7 +433,22 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_in
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("lst"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_lst
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("pop"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_pop
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("doWhile"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_doWhile
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("whileDo"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_doWhile
                 }, ans);
@@ -436,6 +461,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("string?"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_isString
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("empty?"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_isEmpty
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("substr"),
@@ -461,6 +491,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("&"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_and
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("not"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_not
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("or"),
@@ -692,6 +727,11 @@ void evalSym (Symbol insym, List **stack, List **vars) {
 
     if(stringEq(insym.word, Nothing.word)) {
         *stack = cons(Nothing, *stack);
+        return;
+    }
+
+    if(insym.type != ITSELF) {
+        *stack = cons(insym, *stack);
         return;
     }
 
@@ -936,6 +976,44 @@ bool symbolEq (Symbol a, Symbol b) {
     }
 }
 
+void builtin_isEmpty (List **stack, List **vars) {
+    if(stack == NULL || (*stack)->val.type != LIST) {
+        fprintf(stderr, "builtin_empty?: wrong arg\n");
+        return;
+    }
+
+    *stack = consBool((*stack)->val.value.list == NULL, *stack);
+}
+void builtin_pop (List **stack, List **vars) {
+    if(stack == NULL || (*stack)->val.type != LIST) {
+        fprintf(stderr, "builtin_pop: wrong arg\n");
+        return;
+    }
+
+    List **lptr = &((*stack)->val.value.list);
+    List *tail = (*lptr)->next;
+    (*lptr)->next = *stack;
+    *stack = *lptr;
+    *lptr = tail;
+}
+
+void builtin_lst (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){ INT });
+    argsOrWarn(args);
+
+    int n = pop(&args).value.integer;
+    List *cur = *stack;
+    for(uint i = 1; i < n && cur != NULL; i++, cur = cur->next);
+    if(cur == NULL) {
+        fprintf(stderr, "builtin_lst: insufficient args.\n");
+        return;
+    }
+
+    List *newstack = cur->next;
+    cur->next = NULL;
+    *stack = consList(newstack, *stack);
+}
+
 void builtin_toInt (List **stack, List **vars) {
     List *args = getArgs(stack, 1, (int[]){ STRING });
     argsOrWarn(args);
@@ -1036,6 +1114,11 @@ void builtin_or (List **stack, List **vars) {
     bool b = pop(&args).value.boolean;
 
     *stack = consBool(a || b, *stack);
+}
+
+void builtin_not (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]) { BOOLEAN });
+    *stack = consBool(!(pop(&args).value.boolean), *stack);
 }
 
 void builtin_and (List **stack, List **vars) {
@@ -1478,6 +1561,29 @@ void builtin_doWhile (List **stack, List **vars) {
             return;
         }
     } while (ans->val.value.boolean);
+}
+
+void builtin_whileDo (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]){LIST, LIST});
+    if(args == NULL) {
+        fprintf(stderr, "wrong arguments for doWhile(List, List)\n");
+        return;
+    }
+
+    List *condition = pop(&args).value.list;
+    List *body = pop(&args).value.list;
+    List *ans;
+ 
+    while (ans->val.value.boolean){
+        eval(body, stack, vars);
+        eval(condition, stack, vars);
+        ans = getArgs(stack, 1, (int[]){BOOLEAN});
+        if(ans == NULL) {
+            fprintf(stderr, "Wrong condition for whileDo()\n");
+            printSymbol((*stack)->val);
+            return;
+        }
+    }
 }
 
 void builtin_content (List **stack, List **variables) {
