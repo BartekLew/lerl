@@ -191,6 +191,7 @@ void builtin_drop (List **stack, List **vars);
 void builtin_dropOne (List **stack, List **vars);
 void builtin_at (List **stack, List **vars);
 void builtin_eq (List **stack, List **vars);
+void builtin_neq (List **stack, List **vars);
 void builtin_if (List **stack, List **vars);
 void builtin_match (List **stack, List **vars);
 void builtin_doCounting (List **stack, List **vars);
@@ -437,6 +438,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("="),
                     .type = BUILTIN,
                     .value.builtin = &builtin_eq
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("!="),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_neq
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("&"),
@@ -1211,6 +1217,21 @@ void builtin_eq (List **stack, List **vars) {
     freeList(args);
 
     *stack = consBool(symbolEq(a, b), *stack);
+}
+
+void builtin_neq (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { ANY, ANY });
+    argsOrWarn(args);
+
+    Symbol a = args->val;
+    Symbol b = args->next->val;
+
+    args->next->next = *stack;
+    *stack = args->next;
+    args->next = NULL;
+    freeList(args);
+
+    *stack = consBool(!symbolEq(a, b), *stack);
 }
 
 void builtin_at (List **stack, List **vars) {
