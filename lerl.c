@@ -203,6 +203,7 @@ void builtin_assign (List **stack, List **vars);
 void builtin_clone (List **stack, List **vars);
 void builtin_plus (List **stack, List **vars);
 void builtin_minus (List **stack, List **vars);
+void builtin_mul (List **stack, List **vars);
 void builtin_lt (List **stack, List **vars);
 void builtin_gt (List **stack, List **vars);
 void builtin_lte (List **stack, List **vars);
@@ -475,6 +476,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("-"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_minus
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("*"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_mul
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("<"),
@@ -1149,6 +1155,15 @@ void builtin_minus (List **stack, List **vars) {
     int b = pop(&args).value.integer;
     int a = pop(&args).value.integer;
     *stack = consInt(a - b, *stack);
+}
+
+void builtin_mul (List **stack, List **vars) {
+    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+    argsOrWarn(args);
+
+    *stack = consInt(pop(&args).value.integer
+                        * pop(&args).value.integer,
+                     *stack);
 }
 
 void builtin_clone (List **stack, List **vars) {
