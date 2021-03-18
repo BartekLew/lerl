@@ -222,6 +222,7 @@ void builtin_toInt (List **stack, List **vars);
 void builtin_toSym (List **stack, List **vars);
 void builtin_lst (List **stack, List **vars);
 void builtin_pop (List **stack, List **vars);
+void builtin_next (List **stack, List **vars);
 void builtin_isEmpty (List **stack, List **vars);
 
 typedef struct List {
@@ -443,6 +444,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_pop
                 }, ans);
     ans = cons( (Symbol) {
+                    .word = constString("next"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_next
+                }, ans);
+    ans = cons( (Symbol) {
                     .word = constString("doWhile"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_doWhile
@@ -450,7 +456,7 @@ List *initial_global_symtab (int argc, const char **argv) {
     ans = cons( (Symbol) {
                     .word = constString("whileDo"),
                     .type = BUILTIN,
-                    .value.builtin = &builtin_doWhile
+                    .value.builtin = &builtin_whileDo
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("doCounting"),
@@ -995,6 +1001,18 @@ void builtin_pop (List **stack, List **vars) {
     (*lptr)->next = *stack;
     *stack = *lptr;
     *lptr = tail;
+}
+
+void builtin_next (List **stack, List **vars) {
+    if(stack == NULL || (*stack)->val.type != LIST) {
+        fprintf(stderr, "builtin_pop: wrong arg\n");
+        return;
+    }
+
+    List **src = &((*stack)->val.value.list);
+    Symbol ans = (*src)->val;
+    *src = (*src)->next;
+    *stack = cons(ans, *stack);
 }
 
 void builtin_lst (List **stack, List **vars) {
@@ -1572,17 +1590,18 @@ void builtin_whileDo (List **stack, List **vars) {
 
     List *condition = pop(&args).value.list;
     List *body = pop(&args).value.list;
-    List *ans;
  
-    while (ans->val.value.boolean){
-        eval(body, stack, vars);
+    while (true) {
         eval(condition, stack, vars);
-        ans = getArgs(stack, 1, (int[]){BOOLEAN});
+        List *ans = getArgs(stack, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for whileDo()\n");
             printSymbol((*stack)->val);
             return;
         }
+        if(!pop(&ans).value.boolean) break;
+
+        eval(body, stack, vars);
     }
 }
 
