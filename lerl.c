@@ -247,6 +247,9 @@ void freeList (List *l) {
         freeList(l->val.value.list);
     }
 
+    if(l->val.type == ARRAY) {
+        free(l->val.value.array.data);
+    }
     if(l->val.type == SOURCE) {
         close_source(l->val.value.source);
     }
@@ -824,6 +827,7 @@ void run_source(Source root, List **vars) {
         printf("\n");
     }
 
+    free(symbols.data);
     freeList(stack);
 }
 
