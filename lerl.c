@@ -220,6 +220,7 @@ void builtin_dbgoff (List **stack, List **vars);
 void builtin_eval (List **stack, List **vars);
 void builtin_toInt (List **stack, List **vars);
 void builtin_toSym (List **stack, List **vars);
+void builtin_toStr (List **stack, List **vars);
 void builtin_lst (List **stack, List **vars);
 void builtin_pop (List **stack, List **vars);
 void builtin_next (List **stack, List **vars);
@@ -416,7 +417,7 @@ List *initial_global_symtab (int argc, const char **argv) {
     ans = cons( (Symbol) {
                     .word = constString("pop"),
                     .type = BUILTIN,
-                    .value.builtin = &builtin_stash
+                    .value.builtin = &builtin_pop
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("reverse"),
@@ -562,6 +563,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString(">sym"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_toSym
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString(">str"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_toStr
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("exit"),
@@ -1004,12 +1010,16 @@ void builtin_pop (List **stack, List **vars) {
 }
 
 void builtin_next (List **stack, List **vars) {
-    if(stack == NULL || (*stack)->val.type != LIST) {
+    if(*stack == NULL || (*stack)->val.type != LIST) {
         fprintf(stderr, "builtin_pop: wrong arg\n");
         return;
     }
 
     List **src = &((*stack)->val.value.list);
+    if(*src == NULL) {
+        *stack = cons(Nothing, *stack);
+    }
+
     Symbol ans = (*src)->val;
     *src = (*src)->next;
     *stack = cons(ans, *stack);
@@ -1047,6 +1057,17 @@ void builtin_toSym (List **stack, List **vars) {
     *stack = cons ((Symbol) { .word = str,
                               .type = ITSELF },
                    *stack);
+}
+
+void builtin_toStr (List **stack, List **vars) {
+    List *args = getArgs(stack, 1, (int[]){ ITSELF });
+    argsOrWarn(args);
+
+    Symbol sym = pop(&args);
+    sym.type = STRING;
+    sym.value.string = sym.word;
+
+    *stack = cons (sym, *stack);
 }
 
 void builtin_eval (List **stack, List **vars) {
@@ -1504,21 +1525,26 @@ void builtin_dropOne (List **stack, List **vars) {
 
 void builtin_stash (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]) { INT, ANY });
-    if(args != NULL) {
-        int distance = pop(&args).value.integer;
-        Symbol val = pop(&args);
+    argsOrWarn(args);
+    int distance = pop(&args).value.integer;
+    Symbol val = pop(&args);
 
-        List *cur = *stack;
-        for(int i = 1; i < distance; i++)
-            cur = cur->next;
+    List *cur = *stack;
+    for(int i = 1; i < distance; i++)
+         cur = cur->next;
 
-        if(cur->next->val.type == LIST) {
-            Symbol *s = &(cur->next->val);
-            s->value.list = cons(val, s->value.list);
-        } else
-           cur->next = consList(cur->next,
-                                cons(val, NULL));
+    if(cur == NULL) {
+        fprintf(stderr, "builtin_stash: to short stack for len=%d\n",
+                distance);
+        return;
     }
+
+    if(cur->next != NULL && cur->next->val.type == LIST) {
+         Symbol *s = &(cur->next->val);
+         s->value.list = cons(val, s->value.list);
+    } else
+         cur->next = consList(cur->next,
+                              cons(val, NULL));
 }
 
 void builtin_defun (List **stack, List **vars) {
@@ -1584,7 +1610,7 @@ void builtin_doWhile (List **stack, List **vars) {
 void builtin_whileDo (List **stack, List **vars) {
     List *args = getArgs(stack, 2, (int[]){LIST, LIST});
     if(args == NULL) {
-        fprintf(stderr, "wrong arguments for doWhile(List, List)\n");
+        fprintf(stderr, "wrong arguments for whileDo(List, List)\n");
         return;
     }
 
