@@ -1,1 +1,5 @@
 void builtin_load(List **stack, List **args)
+void builtin_content(List **stack, List **args)
+void builtin_cut(List **stack, List **args)
+void builtin_quote(List **stack, List **args)
+void builtin_isString(List **stack, List **args)

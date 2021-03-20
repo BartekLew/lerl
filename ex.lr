@@ -1,4 +1,12 @@
 ("void builtin_" 1>>| "(List **stack, List **args)" 3lst reverse) C-builtin-head fn
 ((pop .) (empty? not) whileDo ;1) .* fn
 
-"load" C-builtin-head .* #nl .
+(action assign
+        (action !@) (next nothing !=) whileDo) forList fn
+
+(load content cut quote isString)
+     (pop >str 1 stash)
+     (empty? not) whileDo
+        ;1 reverse builtins assign
+
+builtins (C-builtin-head .* #nl .) forList ;
