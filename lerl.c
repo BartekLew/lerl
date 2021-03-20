@@ -415,11 +415,6 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .value.builtin = &builtin_stash
                 }, ans);
     ans = cons( (Symbol) {
-                    .word = constString("pop"),
-                    .type = BUILTIN,
-                    .value.builtin = &builtin_pop
-                }, ans);
-    ans = cons( (Symbol) {
                     .word = constString("reverse"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_reverse
