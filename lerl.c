@@ -710,6 +710,11 @@ Symbol specialSym(Symbol s) {
                 .word = s.word,
                     .type = INT,
                     .value.integer = (int) s.word.data[1] };
+        } else if (s.word.data[0] == '\'') {
+            return (Symbol) {
+                .word = {.data = s.word.data + 1,
+                         .len = s.word.len - 1},
+                .type = ITSELF};
         }
         Symbol sn = strToInt(s.word);
         if(sn.type == INT) {
@@ -992,12 +997,17 @@ void builtin_isEmpty (List **stack, List **vars) {
     *stack = consBool((*stack)->val.value.list == NULL, *stack);
 }
 void builtin_pop (List **stack, List **vars) {
-    if(stack == NULL || (*stack)->val.type != LIST) {
+    if(*stack == NULL || (*stack)->val.type != LIST) {
         fprintf(stderr, "builtin_pop: wrong arg\n");
         return;
     }
 
     List **lptr = &((*stack)->val.value.list);
+    if(*lptr == NULL) {
+        *stack = cons(Nothing, *stack);
+        return;
+    }
+
     List *tail = (*lptr)->next;
     (*lptr)->next = *stack;
     *stack = *lptr;
@@ -1013,6 +1023,7 @@ void builtin_next (List **stack, List **vars) {
     List **src = &((*stack)->val.value.list);
     if(*src == NULL) {
         *stack = cons(Nothing, *stack);
+        return;
     }
 
     Symbol ans = (*src)->val;
