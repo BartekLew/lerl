@@ -43,6 +43,7 @@ typedef struct Source {
 #define ArrayOf(TYPE) \
     typedef struct TYPE ## Array { \
         TYPE    *data; \
+        uint    refs; \
         size_t  len; \
     } TYPE ## Array; \
     \
@@ -50,12 +51,14 @@ typedef struct Source {
     mk_ ## TYPE ## Array (uint len) { \
         return (TYPE ## Array) { \
             .data = malloc (sizeof(TYPE) * len), \
+            .refs = 1, \
             .len = len \
         }; \
     } \
     \
     void free_ ## TYPE ## Array (TYPE ## Array tgt) {\
-        free(tgt.data); \
+        if(--tgt.refs == 0) \
+            free(tgt.data); \
     }
 
 ArrayOf(Source)
@@ -262,7 +265,7 @@ void freeList (List *l) {
     }
 
     if(l->val.type == ARRAY) {
-        free(l->val.value.array.data);
+        free_StringArray(l->val.value.array);
     }
     if(l->val.type == SOURCE) {
         close_source(l->val.value.source);
@@ -967,6 +970,7 @@ Symbol implicitMap(List **stack, List **vars,
                          };
             ans = cons(sym, ans);
             self(&ans, vars);
+            free_StringArray(s.value.array);
         }
         return (Symbol) {
                  .word=constString(""),
@@ -1680,6 +1684,7 @@ void builtin_content (List **stack, List **variables) {
         }
         printf("%.*s", (int)arr.data[i].len, arr.data[i].data);
         fputs(cpar,stdout);
+        free_StringArray(arr);
     } else if(s.type == SOURCE) {
         Source src = s.value.source;
         printf("%.*s", (int)src.len, src.buff);
@@ -1752,10 +1757,13 @@ void builtin_cut (List **stack, List **vars) {
                 String s = {.data = srcstr.data,
                             .len = i};
                 pushStr(stack, s);
+                free_StringArray(seps);
                 return;
             }
         } 
     }
+
+    free_StringArray(seps);
     *stack = cons((Symbol) {
                 .word = constString(""),
                 .type = NOTHING
