@@ -226,12 +226,12 @@ void builtin_toSym (List **stack, List **vars);
 void builtin_toStr (List **stack, List **vars);
 void builtin_lst (List **stack, List **vars);
 void builtin_pop (List **stack, List **vars);
-void builtin_next (List **stack, List **vars);
 void builtin_isEmpty (List **stack, List **vars);
 void printSymbol (Symbol s);
 
 typedef struct List {
     Symbol      val;
+    uint        refs;
     struct List *next;
 } List;
 
@@ -239,6 +239,7 @@ List *cons(Symbol value, List *before) {
     List *ans = malloc(sizeof(List));
     *ans = (List) {
         .val = value,
+        .refs = 1,
         .next = before
     };
 
@@ -255,10 +256,12 @@ void freeList (List *l) {
     if(l == NULL) return;
 
     #ifdef DEBUG_MEM
-    printf("freeing %p: ", l);
+    printf("freeing %p (%u refs): ", l, l->refs);
     printSymbol(l->val);
     printf("\n");
     #endif
+
+    if(l->refs-- > 1) return;
 
     if(l->val.type == LIST) {
         freeList(l->val.value.list);
@@ -278,6 +281,60 @@ void freeList (List *l) {
     free(l);
 }
 
+List *cloneListUntil(List *l, List *last) {
+    if(l == NULL) return NULL;
+
+    List *ans = cons(l->val, NULL);
+    List *wcur = ans;
+    for(List *cur = l->next; cur != NULL && cur != last; cur = cur->next) {
+        wcur->next = cons(cur->val, NULL);
+        wcur = wcur->next;
+    }
+
+    wcur->next = NULL;
+    return ans;
+}
+
+List *joinLists(List *a, List *b) {
+    if(a == NULL) return b;
+
+    List *cur = a;
+    while(cur->next != NULL) cur=cur->next;
+    cur->next = b;
+    b->refs++;
+    return a;
+}
+
+List *splitList(List **l, uint index) {
+    if(index == 0) return NULL;
+
+    List *cur = *l;
+    bool needs_clone = false;
+    for(uint i = 1; i < index; i++) {
+        needs_clone |= (cur->refs > 1);
+        cur = cur->next;
+    }
+    needs_clone |= (cur->refs > 1);
+
+    List *ans = *l;
+    if(needs_clone) {
+        ans = cloneListUntil(*l, cur);
+        freeList(*l);
+    }
+
+    *l = cur->next;
+    return joinLists(ans, cur->next);
+}
+
+Symbol refsym(Symbol s) {
+    if(s.type == LIST && s.value.list != NULL) {
+        s.value.list->refs++;
+    } else if (s.type == ARRAY) {
+        s.value.array.refs++;
+    }
+
+    return s;
+}
 #define Nothing (Symbol) { \
     .word = constString("nothing"), \
     .type = NOTHING \
@@ -318,7 +375,8 @@ Symbol pop(List **l) {
 
     List *old = *l;
     *l = (*l)->next;
-    free(old);
+    if(old->refs-- == 1)
+        free(old);
 
     return s;    
 }
@@ -370,13 +428,6 @@ List *consString(String str, List *tail) {
                 .value.string = str }, tail);
 }
 
-List *joinLists(List *a, List *b) {
-    List *start = a;
-    while(a->next != NULL) {a = a->next;}
-    a->next = b;
-    return start;
-}
-    
 List *reverseList(List *tgt) {
     List *last = NULL;
     while(tgt != NULL) {
@@ -387,6 +438,18 @@ List *reverseList(List *tgt) {
     }
 
     return last;
+}
+
+List *reversedList(List *src) {
+    if(src == NULL) return NULL;
+
+    List *ans = cons(src->val, NULL);
+    while(src->next != NULL) {
+        src = src->next;
+        ans = cons(src->val, ans);
+    }
+
+    return ans;
 }
 
 Symbol find(String name, List *list) {
@@ -468,7 +531,7 @@ List *initial_global_symtab (int argc, const char **argv) {
     ans = cons( (Symbol) {
                     .word = constString("next"),
                     .type = BUILTIN,
-                    .value.builtin = &builtin_next
+                    .value.builtin = &builtin_pop
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("doWhile"),
@@ -780,7 +843,7 @@ void evalSym (Symbol insym, List **stack, List **vars) {
         } else if(s.type == FUNCTION) {
             eval(s.value.list, stack, vars);
         } else {
-            *stack = cons(s, *stack);
+            *stack = cons(refsym(s), *stack);
         }
     } else {
         *stack = cons(specialSym(insym), *stack);
@@ -837,7 +900,7 @@ void run_source(Source root, List **vars) {
                                     .type = ITSELF}),
                          stack);
         } else {
-            stack = cons(val, stack);
+            stack = cons(refsym(val), stack);
         }
     }
 
@@ -1036,27 +1099,13 @@ void builtin_pop (List **stack, List **vars) {
         return;
     }
 
-    List *tail = (*lptr)->next;
-    (*lptr)->next = *stack;
-    *stack = *lptr;
-    *lptr = tail;
-}
-
-void builtin_next (List **stack, List **vars) {
-    if(*stack == NULL || (*stack)->val.type != LIST) {
-        fprintf(stderr, "builtin_pop: wrong arg\n");
-        return;
-    }
-
-    List **src = &((*stack)->val.value.list);
-    if(*src == NULL) {
-        *stack = cons(Nothing, *stack);
-        return;
-    }
-
-    Symbol ans = (*src)->val;
-    *src = (*src)->next;
-    *stack = cons(ans, *stack);
+    if((*lptr)->refs == 1) {
+        List *tail = (*lptr)->next;
+        (*lptr)->next = *stack;
+        *stack = *lptr;
+        *lptr = tail;
+    } else
+        *stack = cons(pop(lptr), *stack);
 }
 
 void builtin_lst (List **stack, List **vars) {
@@ -1108,7 +1157,9 @@ void builtin_eval (List **stack, List **vars) {
     List *args = getArgs(stack, 1, (int[]){ LIST });
     argsOrWarn(args);
 
-    eval(pop(&args).value.list, stack, vars);
+    List *body = pop(&args).value.list;
+    eval(body, stack, vars);
+    freeList(body);
 }
 
 void builtin_dbgon (List **stack, List **vars) {
@@ -1144,10 +1195,12 @@ void builtin_in (List **stack, List **vars) {
         if(symbolEq(sym, ref)) {
             *stack = consBool(true,
                               cons(ref, *stack));
+            freeList(options);
             return;
         }
     }
 
+    freeList(options);
     *stack = consBool(false,
                       cons(ref, *stack));
 }
@@ -1167,6 +1220,8 @@ void builtin_or (List **stack, List **vars) {
                 *stack = stacktail;
             }
         }
+
+        freeList(tests);
 
         while(bools != NULL) {
             if(pop(&bools).value.boolean == true) {
@@ -1209,6 +1264,8 @@ void builtin_and (List **stack, List **vars) {
                 *stack = stacktail;
             }
         }
+
+        freeList(tests);
 
         while(bools != NULL) {
             if(pop(&bools).value.boolean != true) {
@@ -1414,19 +1471,20 @@ void builtin_match (List **stack, List **vars) {
                 *stack = cons(rules->next->val,
                               *stack);
             }
-            freeList(rules);
             return;
         }
         List *nextcur = rules->next->next;
         rules->next->next = NULL;
-        freeList(rules);
         rules = nextcur;
     }
 
     if(rules != NULL){
+        // TODO: Why len == 0??
         if(rules->val.word.len == 0
             && rules->val.type == LIST) {
-            eval(pop(&rules).value.list, stack, vars);
+            List *body = pop(&rules).value.list;
+            eval(body, stack, vars);
+            freeList(body);
         } else {
             *stack = cons(pop(&rules), *stack);
         }
@@ -1457,6 +1515,8 @@ void builtin_if (List **stack, List **vars) {
         eval(elseb, stack, vars);
     }
     
+    freeList(ifb);
+    freeList(elseb);
 }
 
 void builtin_eq (List **stack, List **vars) {
@@ -1554,7 +1614,9 @@ void builtin_drop (List **stack, List **vars) {
 }
 
 void builtin_dropOne (List **stack, List **vars) {
-    pop(stack);
+    Symbol s = pop(stack);
+    if(s.type == LIST)
+        freeList(s.value.list);
 }
 
 void builtin_stash (List **stack, List **vars) {
@@ -1598,9 +1660,13 @@ void builtin_defun (List **stack, List **vars) {
 void builtin_reverse (List **stack, List **vars) {
     List *args = getArgs(stack, 1, (int[]){LIST});
     if(args != NULL) {
-        args->val.value.list = reverseList(args->val.value.list);
+        List *oldList = args->val.value.list;
+        args->val.value.list = reversedList(oldList);
+
         args->next = *stack;
         *stack = args;
+
+        freeList(oldList);
     }
 }
 
@@ -1616,6 +1682,8 @@ void builtin_doCounting (List **stack, List **vars) {
         *stack = consInt(i, *stack);
         eval(commands, stack, vars);
     }
+
+    freeList(commands);
 }
     
 void builtin_doWhile (List **stack, List **vars) {
@@ -1636,9 +1704,15 @@ void builtin_doWhile (List **stack, List **vars) {
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for doWhile()\n");
             printSymbol((*stack)->val);
+
+            freeList(body);
+            freeList(condition);
             return;
         }
     } while (ans->val.value.boolean);
+
+    freeList(body);
+    freeList(condition);
 }
 
 void builtin_whileDo (List **stack, List **vars) {
@@ -1657,12 +1731,18 @@ void builtin_whileDo (List **stack, List **vars) {
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for whileDo()\n");
             printSymbol((*stack)->val);
+
+            freeList(body);
+            freeList(condition);
             return;
         }
         if(!pop(&ans).value.boolean) break;
 
         eval(body, stack, vars);
     }
+
+    freeList(body);
+    freeList(condition);
 }
 
 void builtin_content (List **stack, List **variables) {
@@ -1674,6 +1754,7 @@ void builtin_content (List **stack, List **variables) {
 
     if(s.type == LIST) {
         printSymbol(s);
+        freeList(s.value.list);
     } else if(s.type == ARRAY) {
         StringArray arr = s.value.array;
         fputs(opar, stdout);
