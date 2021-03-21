@@ -225,6 +225,7 @@ void builtin_lst (List **stack, List **vars);
 void builtin_pop (List **stack, List **vars);
 void builtin_next (List **stack, List **vars);
 void builtin_isEmpty (List **stack, List **vars);
+void printSymbol (Symbol s);
 
 typedef struct List {
     Symbol      val;
@@ -237,11 +238,24 @@ List *cons(Symbol value, List *before) {
         .val = value,
         .next = before
     };
+
+    #ifdef DEBUG_MEM
+    printf("cons %p: ", ans);
+    printSymbol(value);
+    printf("\n");
+    #endif 
+
     return ans;
 }
 
 void freeList (List *l) {
     if(l == NULL) return;
+
+    #ifdef DEBUG_MEM
+    printf("freeing %p: ", l);
+    printSymbol(l->val);
+    printf("\n");
+    #endif
 
     if(l->val.type == LIST) {
         freeList(l->val.value.list);
@@ -290,6 +304,12 @@ void freeList (List *l) {
 Symbol pop(List **l) {
     if(l == NULL)
         return Nothing;
+
+    #ifdef DEBUG_MEM
+    printf("popping %p: ", *l);
+    printSymbol((*l)->val);
+    printf("\n");
+    #endif
 
     Symbol s = (*l)->val;
 
