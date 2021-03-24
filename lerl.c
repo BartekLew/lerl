@@ -1818,30 +1818,24 @@ void builtin_content (RunEnv *env) {
 }
 
 void builtin_load (RunEnv *env) {
-    verifyArg(env->stack, "load()");
+    String fname;
+    List *args = getArgs(env, 1, (int[]) { ITSELF });
+    if(args != NULL)
+        fname = pop(&args).word;
+    else {
+        args = getArgs(env, 1, (int[]) { STRING });
+        argsOrWarn(args);
 
-    Symbol s = implicitMap(env, &builtin_load);
-    if(s.type == LIST) {
-        env->stack = cons(s, env->stack);
-    } else if(s.type == ITSELF) {
-        String str = s.word;
-        char buff[str.len+1];
-        buff[str.len] = 0;
-        strncpy(buff, str.data, str.len);
-        env->stack = cons((Symbol){.word =str,
-                            .type = SOURCE,
-                            .value.source = load_file(buff)},
-                    env->stack);
-    } else if (s.type == STRING) {
-        String str = s.word;
-        char buff[str.len+1];
-        buff[str.len] = 0;
-        strncpy(buff, str.data, str.len);
-        env->stack = cons((Symbol){.word = str,
+        fname = pop(&args).value.string;
+    }
+
+    char buff[fname.len+1];
+    buff[fname.len] = 0;
+    strncpy(buff, fname.data, fname.len);
+    env->stack = cons((Symbol){.word = fname,
                                .type = SOURCE,
                                .value.source = load_file(buff)},
                       env->stack);
-    } else env->stack = cons(Nothing, env->stack);
 }
 
 void builtin_cut (RunEnv *env) {
