@@ -142,12 +142,17 @@ off_t load_symbols (Source src, StringArray arr, off_t offset) {
 typedef struct Symbol Symbol;
 typedef struct SymbolArray SymbolArray;
 typedef struct List List;
+
+typedef struct RunEnv {
+    List *stack, *variables;
+} RunEnv;
+
 struct Symbol {
     String  word;
     enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
     union {
         String      string;
-        void        (*builtin) (List **stack, List **variables);
+        void        (*builtin) (RunEnv *env);
         StringArray array;
         Source      source;
         List        *list;
@@ -183,50 +188,50 @@ void printStringArray(String name, StringArray arr) {
     printf("\n");
 }
 
-void builtin_load(List **stack, List **variables);
-void builtin_content(List **stack, List **variables);
-void builtin_cut(List **stack, List **variables);
-void builtin_quote(List **stack, List **variables);
-void builtin_isString(List **stack, List **variables);
-void builtin_doWhile(List **stack, List **variables);
-void builtin_whileDo(List **stack, List **variables);
-void builtin_defun(List **stack, List **variables);
-void builtin_stash(List **stack, List **variables);
-void builtin_reverse(List **stack, List **variables);
-void builtin_drop (List **stack, List **vars);
-void builtin_dropOne (List **stack, List **vars);
-void builtin_at (List **stack, List **vars);
-void builtin_eq (List **stack, List **vars);
-void builtin_neq (List **stack, List **vars);
-void builtin_if (List **stack, List **vars);
-void builtin_match (List **stack, List **vars);
-void builtin_doCounting (List **stack, List **vars);
-void builtin_len (List **stack, List **vars);
-void builtin_moveArg (List **stack, List **vars);
-void builtin_assign (List **stack, List **vars);
-void builtin_clone (List **stack, List **vars);
-void builtin_plus (List **stack, List **vars);
-void builtin_minus (List **stack, List **vars);
-void builtin_mul (List **stack, List **vars);
-void builtin_lt (List **stack, List **vars);
-void builtin_gt (List **stack, List **vars);
-void builtin_lte (List **stack, List **vars);
-void builtin_gte (List **stack, List **vars);
-void builtin_and (List **stack, List **vars);
-void builtin_not (List **stack, List **vars);
-void builtin_or (List **stack, List **vars);
-void builtin_substr (List **stack, List **vars);
-void builtin_in (List **stack, List **vars);
-void builtin_exit (List **stack, List **vars);
-void builtin_dbgon (List **stack, List **vars);
-void builtin_dbgoff (List **stack, List **vars);
-void builtin_eval (List **stack, List **vars);
-void builtin_toInt (List **stack, List **vars);
-void builtin_toSym (List **stack, List **vars);
-void builtin_toStr (List **stack, List **vars);
-void builtin_lst (List **stack, List **vars);
-void builtin_pop (List **stack, List **vars);
-void builtin_isEmpty (List **stack, List **vars);
+void builtin_load(RunEnv *env);
+void builtin_content(RunEnv *env);
+void builtin_cut(RunEnv *env);
+void builtin_quote(RunEnv *env);
+void builtin_isString(RunEnv *env);
+void builtin_doWhile(RunEnv *env);
+void builtin_whileDo(RunEnv *env);
+void builtin_defun(RunEnv *env);
+void builtin_stash(RunEnv *env);
+void builtin_reverse(RunEnv *env);
+void builtin_drop (RunEnv *env);
+void builtin_dropOne (RunEnv *env);
+void builtin_at (RunEnv *env);
+void builtin_eq (RunEnv *env);
+void builtin_neq (RunEnv *env);
+void builtin_if (RunEnv *env);
+void builtin_match (RunEnv *env);
+void builtin_doCounting (RunEnv *env);
+void builtin_len (RunEnv *env);
+void builtin_moveArg (RunEnv *env);
+void builtin_assign (RunEnv *env);
+void builtin_clone (RunEnv *env);
+void builtin_plus (RunEnv *env);
+void builtin_minus (RunEnv *env);
+void builtin_mul (RunEnv *env);
+void builtin_lt (RunEnv *env);
+void builtin_gt (RunEnv *env);
+void builtin_lte (RunEnv *env);
+void builtin_gte (RunEnv *env);
+void builtin_and (RunEnv *env);
+void builtin_not (RunEnv *env);
+void builtin_or (RunEnv *env);
+void builtin_substr (RunEnv *env);
+void builtin_in (RunEnv *env);
+void builtin_exit (RunEnv *env);
+void builtin_dbgon (RunEnv *env);
+void builtin_dbgoff (RunEnv *env);
+void builtin_eval (RunEnv *env);
+void builtin_toInt (RunEnv *env);
+void builtin_toSym (RunEnv *env);
+void builtin_toStr (RunEnv *env);
+void builtin_lst (RunEnv *env);
+void builtin_pop (RunEnv *env);
+void builtin_isEmpty (RunEnv *env);
 void printSymbol (Symbol s);
 
 typedef struct List {
@@ -813,67 +818,67 @@ Symbol specialSym(Symbol s) {
     return s;
 }
 
-void eval (List *body, List **stack, List **vars);
+void eval (List *body, RunEnv *env);
 
-void evalSym (Symbol insym, List **stack, List **vars) {
+void evalSym (Symbol insym, RunEnv *env) {
     if(dbg) {
         printf("eval: ");
         printSymbol(insym);
-        if(*stack) {
+        if(env->stack) {
             putc(' ', stdout);
-            printSymbol((*stack)->val);
+            printSymbol(env->stack->val);
         }
         putc('\n', stdout);
     }
 
     if(stringEq(insym.word, Nothing.word)) {
-        *stack = cons(Nothing, *stack);
+        env->stack = cons(Nothing, env->stack);
         return;
     }
 
     if(insym.type != ITSELF) {
-        *stack = cons(insym, *stack);
+        env->stack = cons(insym, env->stack);
         return;
     }
 
-    Symbol s = find(insym.word, *vars);
+    Symbol s = find(insym.word, env->variables);
     if(s.type != NOTHING) {
         if(s.type == BUILTIN) {
-            s.value.builtin(stack, vars);
+            s.value.builtin(env);
         } else if(s.type == FUNCTION) {
-            eval(s.value.list, stack, vars);
+            eval(s.value.list, env);
         } else {
-            *stack = cons(refsym(s), *stack);
+            env->stack = cons(refsym(s), env->stack);
         }
     } else {
-        *stack = cons(specialSym(insym), *stack);
+        env->stack = cons(specialSym(insym), env->stack);
     }
 
-    if(dbg && *stack) {
+    if(dbg && env->stack) {
         printf(" >> ");
-        printSymbol((*stack)->val);
+        printSymbol(env->stack->val);
         putc('\n', stdout);
     }
 }
 
-void eval (List *body, List **stack, List **vars) {
-    List *oldvars = *vars;
+void eval (List *body, RunEnv *env) {
+    List *oldvars = env->variables;
     for(List *cur = body; cur != NULL; cur = cur->next) {
-        evalSym(cur->val, stack, vars);
+        evalSym(cur->val, env);
     }
-    if(*vars != oldvars) {
-        List *cur = *vars;
+    if(env->variables != oldvars) {
+        List *cur = env->variables;
         while(cur->next != oldvars) {
             cur = cur->next;
         }
         cur->next = NULL;
-        freeList(*vars);
-        *vars = oldvars;
+        freeList(env->variables);
+        env->variables = oldvars;
     }
 }
 
 void run_source(Source root, List **vars) {
-    List *stack = NULL;
+    RunEnv env = { .stack = NULL, .variables = *vars };
 
     uint symbols_count = count_symbols(root);
 
@@ -884,41 +889,43 @@ void run_source(Source root, List **vars) {
         String current = symbols.data[i];
         
         if(stringEq(current, Nothing.word)) {
-            stack = cons(Nothing, stack);
+            env.stack = cons(Nothing, env.stack);
             continue;
         }
         
-        Symbol val = find(current, *vars);
+        Symbol val = find(current, env.variables);
 
         if(val.type == BUILTIN) {
-            val.value.builtin(&stack, vars);
+            val.value.builtin(&env);
         } else if (val.type == FUNCTION) {
-            eval(val.value.list, &stack, vars);
+            eval(val.value.list, &env);
         } else if (val.type == NOTHING) {
-            stack = cons(specialSym((Symbol){
+            env.stack = cons(specialSym((Symbol){
                                     .word = current,
                                     .type = ITSELF}),
-                         stack);
+                         env.stack);
         } else {
-            stack = cons(refsym(val), stack);
+            env.stack = cons(refsym(val), env.stack);
         }
+
+        *vars = env.variables;
     }
 
-    if(stack != NULL) {
+    if(env.stack != NULL) {
         printf("\n");
         printSymbol((Symbol) {
             .word=constString("stack"),
             .type=LIST,
-            .value.list = stack});
+            .value.list = env.stack});
         printf("\n");
     }
 
     free(symbols.data);
-    freeList(stack);
+    freeList(env.stack);
 }
 
-void verifyArg(List **stack, const char *name) {
-    if(stack == NULL || *stack == NULL) {
+void verifyArg(List *stack, const char *name) {
+    if(stack == NULL) {
         fprintf(stderr, "ERROR: syntax error %s\n", name);
         exit(1);
     }
@@ -972,8 +979,8 @@ Converter *findConverter(int from, int to) {
     return NULL;
 }
 
-List *getArgs(List **stack, uint count, int types[]) {
-    if(stack == NULL || *stack == NULL) {
+List *getArgs(RunEnv *env, uint count, int types[]) {
+    if(&(env->stack) == NULL || env->stack == NULL) {
         return NULL;
     }
 
@@ -982,7 +989,7 @@ List *getArgs(List **stack, uint count, int types[]) {
         convs[i] = 0;
     }
 
-    List *cur = *stack;
+    List *cur = env->stack;
     for(uint i = 0; i < count; i++) {
         if(cur == NULL) return NULL;
 
@@ -996,10 +1003,10 @@ List *getArgs(List **stack, uint count, int types[]) {
 
     List *sidestack = NULL;
     if(convs[0] != NULL) {
-        (*stack)->val = convs[0]->act((*stack)->val, &sidestack);
+        (env->stack)->val = convs[0]->act((env->stack)->val, &sidestack);
     }
 
-    cur = *stack;
+    cur = env->stack;
     for(uint i = 1; i < count; i++) {
         cur = cur->next;
         if(convs[i] != NULL) {
@@ -1007,22 +1014,21 @@ List *getArgs(List **stack, uint count, int types[]) {
         }
     }
 
-    List *args = *stack;
-    *stack = cur->next;
+    List *args = env->stack;
+    env->stack = cur->next;
 
     if(sidestack != NULL) {
         List *cur = sidestack;
         for(; cur->next != NULL; cur = cur->next);
-        cur->next = *stack;
-        *stack = sidestack;
+        cur->next = env->stack;
+        env->stack = sidestack;
     }
 
     return args;
 }
 
-Symbol implicitMap(List **stack, List **vars,
-                   void (*self) (List**, List**)) {
-    Symbol s = pop(stack); 
+Symbol implicitMap(RunEnv *env, void (*self) (RunEnv *)) {
+    Symbol s = pop(&(env->stack)); 
     if(s.type == ARRAY) {
         List *ans = NULL;
         StringArray arr = s.value.array;
@@ -1032,7 +1038,10 @@ Symbol implicitMap(List **stack, List **vars,
                             .type = ITSELF
                          };
             ans = cons(sym, ans);
-            self(&ans, vars);
+            RunEnv inenv = {.stack = ans,
+                          .variables = env->variables};
+            self(&inenv);
+
             free_StringArray(s.value.array);
         }
         return (Symbol) {
@@ -1043,7 +1052,9 @@ Symbol implicitMap(List **stack, List **vars,
         List *ans = NULL;
         for(List *cur = s.value.list; cur != NULL; cur=cur->next) {
             ans = cons(cur->val, ans);
-            self(&ans, vars);
+            RunEnv inenv = {.stack = ans,
+                          .variables = env->variables};
+            self(&inenv);
         }
         return (Symbol) {
                  .word=constString(""),
@@ -1079,41 +1090,41 @@ bool symbolEq (Symbol a, Symbol b) {
     }
 }
 
-void builtin_isEmpty (List **stack, List **vars) {
-    if(stack == NULL || (*stack)->val.type != LIST) {
+void builtin_isEmpty (RunEnv *env) {
+    if(env->stack == NULL || env->stack->val.type != LIST) {
         fprintf(stderr, "builtin_empty?: wrong arg\n");
         return;
     }
 
-    *stack = consBool((*stack)->val.value.list == NULL, *stack);
+    env->stack = consBool(env->stack->val.value.list == NULL, env->stack);
 }
-void builtin_pop (List **stack, List **vars) {
-    if(*stack == NULL || (*stack)->val.type != LIST) {
+void builtin_pop (RunEnv *env) {
+    if(env->stack == NULL || env->stack->val.type != LIST) {
         fprintf(stderr, "builtin_pop: wrong arg\n");
         return;
     }
 
-    List **lptr = &((*stack)->val.value.list);
+    List **lptr = &(env->stack->val.value.list);
     if(*lptr == NULL) {
-        *stack = cons(Nothing, *stack);
+        env->stack = cons(Nothing, env->stack);
         return;
     }
 
     if((*lptr)->refs == 1) {
         List *tail = (*lptr)->next;
-        (*lptr)->next = *stack;
-        *stack = *lptr;
+        (*lptr)->next = env->stack;
+        env->stack = *lptr;
         *lptr = tail;
     } else
-        *stack = cons(pop(lptr), *stack);
+        env->stack = cons(pop(lptr), env->stack);
 }
 
-void builtin_lst (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){ INT });
+void builtin_lst (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){ INT });
     argsOrWarn(args);
 
     int n = pop(&args).value.integer;
-    List *cur = *stack;
+    List *cur = env->stack;
     for(uint i = 1; i < n && cur != NULL; i++, cur = cur->next);
     if(cur == NULL) {
         fprintf(stderr, "builtin_lst: insufficient args.\n");
@@ -1122,102 +1133,102 @@ void builtin_lst (List **stack, List **vars) {
 
     List *newstack = cur->next;
     cur->next = NULL;
-    *stack = consList(newstack, *stack);
+    env->stack = consList(newstack, env->stack);
 }
 
-void builtin_toInt (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){ STRING });
+void builtin_toInt (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){ STRING });
     argsOrWarn(args);
 
-    *stack = cons(strToInt(pop(&args).value.string), *stack);
+    env->stack = cons(strToInt(pop(&args).value.string), env->stack);
 }
 
-void builtin_toSym (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){ STRING });
+void builtin_toSym (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){ STRING });
     argsOrWarn(args);
 
     String str = pop(&args).value.string;
-    *stack = cons ((Symbol) { .word = str,
+    env->stack = cons ((Symbol) { .word = str,
                               .type = ITSELF },
-                   *stack);
+                   env->stack);
 }
 
-void builtin_toStr (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){ ITSELF });
+void builtin_toStr (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){ ITSELF });
     argsOrWarn(args);
 
     Symbol sym = pop(&args);
     sym.type = STRING;
     sym.value.string = sym.word;
 
-    *stack = cons (sym, *stack);
+    env->stack = cons (sym, env->stack);
 }
 
-void builtin_eval (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){ LIST });
+void builtin_eval (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){ LIST });
     argsOrWarn(args);
 
     List *body = pop(&args).value.list;
-    eval(body, stack, vars);
+    eval(body, env);
     freeList(body);
 }
 
-void builtin_dbgon (List **stack, List **vars) {
+void builtin_dbgon (RunEnv *env) {
     dbg = true;
 }
 
-void builtin_dbgoff (List **stack, List **vars) {
+void builtin_dbgoff (RunEnv *env) {
     dbg = false;
     printf("Stack:\n");
-    printList(*stack);
+    printList(env->stack);
     printf("\n*************\n");
 }
 
-void builtin_exit (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { INT });
+void builtin_exit (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { INT });
     argsOrWarn(args);
 
     int exitCode = pop(&args).value.integer;
     exit(exitCode);
 }
 
-void builtin_in (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
+void builtin_in (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { LIST, ANY });
     argsOrWarn(args);
 
     List *options = pop(&args).value.list;
     Symbol ref = pop(&args);
 
     for(List *opt = options; opt != NULL; opt = opt->next) {
-        Symbol sym = find(opt->val.word, *vars);
+        Symbol sym = find(opt->val.word, env->variables);
         if(sym.type == NOTHING) sym = opt->val;
 
         if(symbolEq(sym, ref)) {
-            *stack = consBool(true,
-                              cons(ref, *stack));
+            env->stack = consBool(true,
+                              cons(ref, env->stack));
             freeList(options);
             return;
         }
     }
 
     freeList(options);
-    *stack = consBool(false,
-                      cons(ref, *stack));
+    env->stack = consBool(false,
+                      cons(ref, env->stack));
 }
 
-void builtin_or (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { LIST });
+void builtin_or (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { LIST });
     if(args != NULL) {
         List *tests = pop(&args).value.list;
         List *bools = NULL;
 
         for(List *cur = tests; cur != NULL; cur = cur->next) {
-            evalSym(cur->val, stack, vars);
-            if(stack != NULL && (*stack)->val.type == BOOLEAN) {
-                List *stacktail = (*stack)->next;
-                (*stack)->next = bools;
-                bools = *stack;
-                *stack = stacktail;
+            evalSym(cur->val, env);
+            if(env->stack != NULL && env->stack->val.type == BOOLEAN) {
+                List *stacktail = env->stack->next;
+                env->stack->next = bools;
+                bools = env->stack;
+                env->stack = stacktail;
             }
         }
 
@@ -1226,42 +1237,42 @@ void builtin_or (List **stack, List **vars) {
         while(bools != NULL) {
             if(pop(&bools).value.boolean == true) {
                 freeList(bools);
-                *stack = consBool(true, *stack);
+                env->stack = consBool(true, env->stack);
                 return;
             }
         }
 
-        *stack = consBool(false, *stack);
+        env->stack = consBool(false, env->stack);
 
         return;
     }
-    args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
+    args = getArgs(env,  2, (int[]) { BOOLEAN, BOOLEAN });
     argsOrWarn(args);
 
     bool a = pop(&args).value.boolean;
     bool b = pop(&args).value.boolean;
 
-    *stack = consBool(a || b, *stack);
+    env->stack = consBool(a || b, env->stack);
 }
 
-void builtin_not (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { BOOLEAN });
-    *stack = consBool(!(pop(&args).value.boolean), *stack);
+void builtin_not (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { BOOLEAN });
+    env->stack = consBool(!(pop(&args).value.boolean), env->stack);
 }
 
-void builtin_and (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { LIST });
+void builtin_and (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { LIST });
     if(args != NULL) {
         List *tests = pop(&args).value.list;
         List *bools = NULL;
 
         for(List *cur = tests; cur != NULL; cur = cur->next) {
-            evalSym(cur->val, stack, vars);
-            if(stack != NULL && (*stack)->val.type == BOOLEAN) {
-                List *stacktail = (*stack)->next;
-                (*stack)->next = bools;
-                bools = *stack;
-                *stack = stacktail;
+            evalSym(cur->val, env);
+            if(env->stack != NULL && env->stack->val.type == BOOLEAN) {
+                List *stacktail = env->stack->next;
+                env->stack->next = bools;
+                bools = env->stack;
+                env->stack = stacktail;
             }
         }
 
@@ -1270,133 +1281,133 @@ void builtin_and (List **stack, List **vars) {
         while(bools != NULL) {
             if(pop(&bools).value.boolean != true) {
                 freeList(bools);
-                *stack = consBool(false, *stack);
+                env->stack = consBool(false, env->stack);
                 return;
             }
         }
 
-        *stack = consBool(true, *stack);
+        env->stack = consBool(true, env->stack);
 
         return;
     }
-    args = getArgs(stack,  2, (int[]) { BOOLEAN, BOOLEAN });
+    args = getArgs(env,  2, (int[]) { BOOLEAN, BOOLEAN });
     argsOrWarn(args);
 
     bool a = pop(&args).value.boolean;
     bool b = pop(&args).value.boolean;
 
-    *stack = consBool(a && b, *stack);
+    env->stack = consBool(a && b, env->stack);
 }
 
-void builtin_lt (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_lt (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
     int a = pop(&args).value.integer;
     int b = args->val.value.integer;
 
-    args->next = *stack;
-    *stack = args;
+    args->next = env->stack;
+    env->stack = args;
 
-    *stack = consBool(a > b, *stack);
+    env->stack = consBool(a > b, env->stack);
 
     // > is used to make it more intuitve, as stack
     // is reverse to order in the code.
 }
 
-void builtin_lte (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_lte (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
     int a = pop(&args).value.integer;
     int b = args->val.value.integer;
 
-    args->next = *stack;
-    *stack = args;
+    args->next = env->stack;
+    env->stack = args;
 
-    *stack = consBool(a >= b, *stack);
+    env->stack = consBool(a >= b, env->stack);
 
     // > is used to make it more intuitve, as stack
     // is reverse to order in the code.
 }
 
-void builtin_gt (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_gt (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
     int a = pop(&args).value.integer;
     int b = args->val.value.integer;
 
-    args->next = *stack;
-    *stack = args;
+    args->next = env->stack;
+    env->stack = args;
 
-    *stack = consBool(a < b, *stack);
+    env->stack = consBool(a < b, env->stack);
 
     // < is used to make it more intuitve, as stack
     // is reverse to order in the code.
 }
 
-void builtin_gte (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_gte (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
     int a = pop(&args).value.integer;
     int b = args->val.value.integer;
 
-    args->next = *stack;
-    *stack = args;
+    args->next = env->stack;
+    env->stack = args;
 
-    *stack = consBool(a <= b, *stack);
+    env->stack = consBool(a <= b, env->stack);
 
     // < is used to make it more intuitve, as stack
     // is reverse to order in the code.
 }
 
-void builtin_plus (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_plus (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
-    *stack = consInt(pop(&args).value.integer
+    env->stack = consInt(pop(&args).value.integer
                         + pop(&args).value.integer,
-                     *stack);
+                     env->stack);
 }
 
-void builtin_minus (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_minus (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
     int b = pop(&args).value.integer;
     int a = pop(&args).value.integer;
-    *stack = consInt(a - b, *stack);
+    env->stack = consInt(a - b, env->stack);
 }
 
-void builtin_mul (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, INT });
+void builtin_mul (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, INT });
     argsOrWarn(args);
 
-    *stack = consInt(pop(&args).value.integer
+    env->stack = consInt(pop(&args).value.integer
                         * pop(&args).value.integer,
-                     *stack);
+                     env->stack);
 }
 
-void builtin_clone (List **stack, List **vars) {
-    if(*stack != NULL) {
-        *stack = cons((*stack)->val, *stack);
+void builtin_clone (RunEnv *env) {
+    if(env->stack != NULL) {
+        env->stack = cons((env->stack)->val, env->stack);
     }
 }
 
-void builtin_assign (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { ITSELF, ANY });
+void builtin_assign (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { ITSELF, ANY });
     argsOrWarn(args);
 
     Symbol name = pop(&args);
     Symbol val = pop(&args);
 
 
-    *vars = cons((Symbol) {
+    env->variables = cons((Symbol) {
                     .word = name.word,
                     .type = val.type,
-                    .value = val.value }, *vars);
+                    .value = val.value }, env->variables);
 }
 
 void evalListExpr(List *listExpr) {
@@ -1432,44 +1443,42 @@ void evalListExpr(List *listExpr) {
     }
 }
 
-bool evalCondexpr (Symbol expr, List **stack, List **vars) {
-    if(stack == NULL) return false;
+bool evalCondexpr (Symbol expr, RunEnv *env) {
+    if(env->stack == NULL) return false;
 
     if(expr.type == LIST) {
-        eval(expr.value.list, stack, vars);
-        Symbol ret = pop(stack);
+        eval(expr.value.list, env);
+        Symbol ret = pop(&(env->stack));
         if(ret.type != BOOLEAN) {
             fprintf(stderr, "evalCondexpr() wrong return value.\n");
             return false;
         }
         return ret.value.boolean;
     } else {
-        Symbol ref = find(expr.word, *vars);
+        Symbol ref = find(expr.word, env->variables);
         if(ref.type == NOTHING)
-            return symbolEq(expr, (*stack)->val);
-        return symbolEq(ref, (*stack)->val);
+            return symbolEq(expr, (env->stack)->val);
+        return symbolEq(ref, (env->stack)->val);
     }
 }
 
-void builtin_match (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { LIST, ANY });
+void builtin_match (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { LIST, ANY });
     if(args == NULL)
         return;
 
     List *rules = pop(&args).value.list;
     evalListExpr(rules);
-    args->next = *stack;
-    *stack = args;
+    args->next = env->stack;
+    env->stack = args;
 
     while(rules != NULL && rules->next != NULL) {
-        if(evalCondexpr(rules->val, stack, vars)) {
+        if(evalCondexpr(rules->val, env)) {
             if(rules->next->val.word.len == 0
                 && rules->next->val.type == LIST) {
-                eval(rules->next->val.value.list,
-                                   stack, vars);
+                eval(rules->next->val.value.list, env);
             } else {
-                *stack = cons(rules->next->val,
-                              *stack);
+                env->stack = cons(rules->next->val, env->stack);
             }
             return;
         }
@@ -1483,149 +1492,149 @@ void builtin_match (List **stack, List **vars) {
         if(rules->val.word.len == 0
             && rules->val.type == LIST) {
             List *body = pop(&rules).value.list;
-            eval(body, stack, vars);
+            eval(body, env);
             freeList(body);
         } else {
-            *stack = cons(pop(&rules), *stack);
+            env->stack = cons(pop(&rules), env->stack);
         }
     }
     else
-        *stack = cons(Nothing, *stack);
+        env->stack = cons(Nothing, env->stack);
 }
 
-void builtin_if (List **stack, List **vars) {
+void builtin_if (RunEnv *env) {
     List *ifb = NULL, *elseb = NULL;
     bool which;
 
-    List *args = getArgs(stack, 3, (int[]) { LIST, LIST, BOOLEAN });
+    List *args = getArgs(env, 3, (int[]) { LIST, LIST, BOOLEAN });
     if(args != NULL) {
         ifb = pop(&args).value.list;
         elseb = pop(&args).value.list;
         which = pop(&args).value.boolean;
     } else {
-        args = getArgs(stack, 2, (int[]) { LIST, BOOLEAN });
+        args = getArgs(env, 2, (int[]) { LIST, BOOLEAN });
         argsOrWarn(args);
         ifb = pop(&args).value.list;
         which = pop(&args).value.boolean;
     }
 
     if(which) {
-        eval(ifb, stack, vars);
+        eval(ifb, env);
     } else if(elseb != NULL) {
-        eval(elseb, stack, vars);
+        eval(elseb, env);
     }
     
     freeList(ifb);
     freeList(elseb);
 }
 
-void builtin_eq (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { ANY, ANY });
+void builtin_eq (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { ANY, ANY });
     argsOrWarn(args);
 
     Symbol a = args->val;
     Symbol b = args->next->val;
 
-    args->next->next = *stack;
-    *stack = args->next;
+    args->next->next = env->stack;
+    env->stack = args->next;
     args->next = NULL;
     freeList(args);
 
-    *stack = consBool(symbolEq(a, b), *stack);
+    env->stack = consBool(symbolEq(a, b), env->stack);
 }
 
-void builtin_neq (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { ANY, ANY });
+void builtin_neq (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { ANY, ANY });
     argsOrWarn(args);
 
     Symbol a = args->val;
     Symbol b = args->next->val;
 
-    args->next->next = *stack;
-    *stack = args->next;
+    args->next->next = env->stack;
+    env->stack = args->next;
     args->next = NULL;
     freeList(args);
 
-    *stack = consBool(!symbolEq(a, b), *stack);
+    env->stack = consBool(!symbolEq(a, b), env->stack);
 }
 
-void builtin_at (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, STRING });
+void builtin_at (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, STRING });
     if(args == NULL) {
-        List *args = getArgs(stack, 2, (int[]) { INT, ARRAY });
+        List *args = getArgs(env, 2, (int[]) { INT, ARRAY });
         argsOrWarn(args);
 
         int idx = pop(&args).value.integer;
         StringArray sar = args->val.value.array;
-        args->next = *stack;
+        args->next = env->stack;
 
         if(idx >= sar.len || idx < 0)
-            *stack = cons(Nothing, args);
+            env->stack = cons(Nothing, args);
         else
-            *stack = consString(sar.data[idx], args);
+            env->stack = consString(sar.data[idx], args);
 
         return;
     }
 
     int idx = pop(&args).value.integer;
     String src = args->val.value.string;
-    args->next = *stack;
+    args->next = env->stack;
 
     if(idx >= src.len || idx < 0)
-        *stack = cons(Nothing, args);
+        env->stack = cons(Nothing, args);
     else 
-        *stack = consChar(src.data[idx], args);
+        env->stack = consChar(src.data[idx], args);
 }
 
-void builtin_len (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { STRING });
+void builtin_len (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { STRING });
     argsOrWarn(args);
 
     String s = args->val.value.string;
-    args->next = *stack;
-    *stack = consInt(s.len, args);
+    args->next = env->stack;
+    env->stack = consInt(s.len, args);
 }
 
-void builtin_moveArg (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]) { INT });
+void builtin_moveArg (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { INT });
     argsOrWarn(args);
 
     int n = pop(&args).value.integer;
     uint i = 0;
-    List *cur = *stack;
+    List *cur = env->stack;
     while(i < n-1 && cur != NULL) {
         cur = cur->next;
         i++;
     }
 
     if(i != n - 1 || cur == NULL || cur->next == NULL) {
-        *stack = cons(Nothing, *stack);
+        env->stack = cons(Nothing, env->stack);
     } else {
         List *mem = cur->next;
         cur->next = mem->next;
-        mem->next = *stack;
-        *stack = mem;
+        mem->next = env->stack;
+        env->stack = mem;
     }
 }
 
-void builtin_drop (List **stack, List **vars) {
-    freeList(*stack);
-    *stack = NULL;
+void builtin_drop (RunEnv *env) {
+    freeList(env->stack);
+    env->stack = NULL;
 }
 
-void builtin_dropOne (List **stack, List **vars) {
-    Symbol s = pop(stack);
+void builtin_dropOne (RunEnv *env) {
+    Symbol s = pop(&(env->stack));
     if(s.type == LIST)
         freeList(s.value.list);
 }
 
-void builtin_stash (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]) { INT, ANY });
+void builtin_stash (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { INT, ANY });
     argsOrWarn(args);
     int distance = pop(&args).value.integer;
     Symbol val = pop(&args);
 
-    List *cur = *stack;
+    List *cur = env->stack;
     for(int i = 1; i < distance; i++)
          cur = cur->next;
 
@@ -1643,8 +1652,8 @@ void builtin_stash (List **stack, List **vars) {
                               cons(val, NULL));
 }
 
-void builtin_defun (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]){ITSELF, LIST});
+void builtin_defun (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]){ITSELF, LIST});
     if(args == NULL) {
         fprintf(stderr, "wrong arguments for fn(Itself, List)\n");
         return;
@@ -1653,25 +1662,25 @@ void builtin_defun (List **stack, List **vars) {
     Symbol sym = pop(&args);
     args->val.type = FUNCTION;
     args->val.word = sym.word;
-    args->next = *vars;
-    *vars = args;
+    args->next = env->variables;
+    env->variables = args;
 }
 
-void builtin_reverse (List **stack, List **vars) {
-    List *args = getArgs(stack, 1, (int[]){LIST});
+void builtin_reverse (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]){LIST});
     if(args != NULL) {
         List *oldList = args->val.value.list;
         args->val.value.list = reversedList(oldList);
 
-        args->next = *stack;
-        *stack = args;
+        args->next = env->stack;
+        env->stack = args;
 
         freeList(oldList);
     }
 }
 
-void builtin_doCounting (List **stack, List **vars) {
-    List *args = getArgs(stack, 3, (int[]){INT, INT, LIST});
+void builtin_doCounting (RunEnv *env) {
+    List *args = getArgs(env, 3, (int[]){INT, INT, LIST});
     argsOrWarn(args);
 
     int to = pop(&args).value.integer;
@@ -1679,15 +1688,15 @@ void builtin_doCounting (List **stack, List **vars) {
     List *commands = pop(&args).value.list;
 
     for(int i = from; i <= to; i++) {
-        *stack = consInt(i, *stack);
-        eval(commands, stack, vars);
+        env->stack = consInt(i, env->stack);
+        eval(commands, env);
     }
 
     freeList(commands);
 }
     
-void builtin_doWhile (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]){LIST, LIST});
+void builtin_doWhile (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]){LIST, LIST});
     if(args == NULL) {
         fprintf(stderr, "wrong arguments for doWhile(List, List)\n");
         return;
@@ -1698,12 +1707,12 @@ void builtin_doWhile (List **stack, List **vars) {
     List *ans;
 
     do {
-        eval(body, stack, vars);
-        eval(condition, stack, vars);
-        ans = getArgs(stack, 1, (int[]){BOOLEAN});
+        eval(body, env);
+        eval(condition, env);
+        ans = getArgs(env, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for doWhile()\n");
-            printSymbol((*stack)->val);
+            printSymbol((env->stack)->val);
 
             freeList(body);
             freeList(condition);
@@ -1715,8 +1724,8 @@ void builtin_doWhile (List **stack, List **vars) {
     freeList(condition);
 }
 
-void builtin_whileDo (List **stack, List **vars) {
-    List *args = getArgs(stack, 2, (int[]){LIST, LIST});
+void builtin_whileDo (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]){LIST, LIST});
     if(args == NULL) {
         fprintf(stderr, "wrong arguments for whileDo(List, List)\n");
         return;
@@ -1726,11 +1735,11 @@ void builtin_whileDo (List **stack, List **vars) {
     List *body = pop(&args).value.list;
  
     while (true) {
-        eval(condition, stack, vars);
-        List *ans = getArgs(stack, 1, (int[]){BOOLEAN});
+        eval(condition, env);
+        List *ans = getArgs(env, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for whileDo()\n");
-            printSymbol((*stack)->val);
+            printSymbol((env->stack)->val);
 
             freeList(body);
             freeList(condition);
@@ -1738,17 +1747,17 @@ void builtin_whileDo (List **stack, List **vars) {
         }
         if(!pop(&ans).value.boolean) break;
 
-        eval(body, stack, vars);
+        eval(body, env);
     }
 
     freeList(body);
     freeList(condition);
 }
 
-void builtin_content (List **stack, List **variables) {
-    verifyArg(stack, ".");
+void builtin_content (RunEnv *env) {
+    verifyArg(env->stack, ".");
 
-    Symbol s = pop(stack);
+    Symbol s = pop(&(env->stack));
 
     const char *opar = "( ", *cpar = " )";
 
@@ -1788,38 +1797,38 @@ void builtin_content (List **stack, List **variables) {
     }
 }
 
-void builtin_load (List **stack, List **variables) {
-    verifyArg(stack, "load()");
+void builtin_load (RunEnv *env) {
+    verifyArg(env->stack, "load()");
 
-    Symbol s = implicitMap(stack, variables, &builtin_load);
+    Symbol s = implicitMap(env, &builtin_load);
     if(s.type == LIST) {
-        *stack = cons(s, *stack);
+        env->stack = cons(s, env->stack);
     } else if(s.type == ITSELF) {
         String str = s.word;
         char buff[str.len+1];
         buff[str.len] = 0;
         strncpy(buff, str.data, str.len);
-        *stack = cons((Symbol){.word =str,
+        env->stack = cons((Symbol){.word =str,
                             .type = SOURCE,
                             .value.source = load_file(buff)},
-                    *stack);
+                    env->stack);
     } else if (s.type == STRING) {
         String str = s.word;
         char buff[str.len+1];
         buff[str.len] = 0;
         strncpy(buff, str.data, str.len);
-        *stack = cons((Symbol){.word = str,
+        env->stack = cons((Symbol){.word = str,
                                .type = SOURCE,
                                .value.source = load_file(buff)},
-                      *stack);
-    } else *stack = cons(Nothing, *stack);
+                      env->stack);
+    } else env->stack = cons(Nothing, env->stack);
 }
 
-void builtin_cut (List **stack, List **vars) {
+void builtin_cut (RunEnv *env) {
     String      srcstr;
     StringArray seps;
 
-    List *args = getArgs(stack, 2, (int[]){ ARRAY, STRING });
+    List *args = getArgs(env, 2, (int[]){ ARRAY, STRING });
     if(args == NULL) {
         fprintf(stderr, "wrong args for cut().\n");
         return;
@@ -1834,10 +1843,10 @@ void builtin_cut (List **stack, List **vars) {
             if(strncmp(sep.data, srcstr.data+i, sep.len) == 0) {
                 String str = {.data = srcstr.data+i+sep.len,
                               .len = srcstr.len - i - sep.len };
-                pushStr(stack, str);
+                pushStr(&(env->stack), str);
                 String s = {.data = srcstr.data,
                             .len = i};
-                pushStr(stack, s);
+                pushStr(&(env->stack), s);
                 free_StringArray(seps);
                 return;
             }
@@ -1845,15 +1854,15 @@ void builtin_cut (List **stack, List **vars) {
     }
 
     free_StringArray(seps);
-    *stack = cons((Symbol) {
+    env->stack = cons((Symbol) {
                 .word = constString(""),
                 .type = NOTHING
-            }, *stack);
-    pushStr(stack, srcstr);
+            }, env->stack);
+    pushStr(&(env->stack), srcstr);
 }
 
-void builtin_substr(List **stack, List **vars) {
-    List *args = getArgs(stack, 3, (int[]) { INT, INT, STRING });
+void builtin_substr(RunEnv *env) {
+    List *args = getArgs(env, 3, (int[]) { INT, INT, STRING });
     argsOrWarn(args);
 
     int end = pop(&args).value.integer;
@@ -1861,8 +1870,8 @@ void builtin_substr(List **stack, List **vars) {
 
     String str = args->val.value.string;
 
-    args->next = *stack;
-    *stack = consString(
+    args->next = env->stack;
+    env->stack = consString(
         (String){.data = str.data+start,
                  .len = end - start },
         args);
@@ -1872,49 +1881,49 @@ List *varstash = NULL;
 List *stackstash = NULL;
 uint quot_depth = 0;
 
-void builtin_isString(List **stack, List **vars) {
-    if(*stack == NULL) {
-        consBool(false, *stack);
+void builtin_isString(RunEnv *env) {
+    if(env->stack == NULL) {
+        consBool(false, env->stack);
         return;
     }
-    int type = (*stack)->val.type;
+    int type = (env->stack)->val.type;
     if(type == NOTHING) {
-        pop(stack);
-        *stack = consBool(false, *stack);
+        pop(&(env->stack));
+        env->stack = consBool(false, env->stack);
     } else if (type == STRING) {
-        *stack = consBool(true, *stack);
+        env->stack = consBool(true, env->stack);
     } else {
-        *stack = consBool(false, *stack);
+        env->stack = consBool(false, env->stack);
     }
 }
 
-void builtin_unquote (List **stack, List **vars) {
+void builtin_unquote (RunEnv *env) {
     if(--quot_depth == 0) {
-        *vars = varstash;
-        *stack = consList(stackstash, reverseList(*stack));
+        env->variables = varstash;
+        env->stack = consList(stackstash, reverseList(env->stack));
     } else {
-        *stack = cons((Symbol) {
+        env->stack = cons((Symbol) {
   /*(*/         .word = constString(")"), 
                 .type = ITSELF},
-                *stack);
+                env->stack);
     }
 }
 
-void builtin_nested_quote (List **stack, List **vars) {
+void builtin_nested_quote (RunEnv *env) {
     quot_depth++;
-    *stack = cons((Symbol) {
+    env->stack = cons((Symbol) {
                 .word = constString("("), //)
                 .type = ITSELF},
-                *stack);
+                env->stack);
 }
 
-void builtin_quote (List** stack, List **vars) {
-    varstash = *vars; 
-    stackstash = *stack;
+void builtin_quote (RunEnv *env) {
+    varstash = env->variables; 
+    stackstash = env->stack;
     quot_depth++;
 
-    *stack = NULL;
-    *vars = cons((Symbol) {
+    env->stack = NULL;
+    env->variables = cons((Symbol) {
 /*(*/             .word = constString(")"),
                   .type = BUILTIN,
                   .value.builtin = &builtin_unquote},
