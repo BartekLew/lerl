@@ -142,14 +142,11 @@ off_t load_symbols (Source src, StringArray arr, off_t offset) {
 typedef struct Symbol Symbol;
 typedef struct SymbolArray SymbolArray;
 typedef struct List List;
-
-typedef struct RunEnv {
-    List *stack, *variables;
-} RunEnv;
+typedef struct RunEnv RunEnv;
 
 struct Symbol {
     String  word;
-    enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, NOTHING, ANY } type;
+    enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, SCOPE, NOTHING, ANY } type;
     union {
         String      string;
         void        (*builtin) (RunEnv *env);
@@ -162,6 +159,10 @@ struct Symbol {
     } value;
 };
 ArrayOf(Symbol)
+
+struct RunEnv {
+    List *stack, *globals, *scopeStack;
+};
 
 StringArray mkStringArray(size_t size, const char **vals) {
     StringArray ans = (StringArray) {
@@ -466,6 +467,15 @@ Symbol find(String name, List *list) {
     return Nothing;
 }
 
+Symbol findVar(RunEnv *env, String name) {
+    if(env->scopeStack != NULL) {
+        Symbol sym = find(name, env->scopeStack->val.value.list);
+        if(sym.type != NOTHING) return sym;
+    }
+
+    return find(name, env->globals);
+}
+
 void printSymbol (Symbol s) {
     if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
     else if (s.type == STRING)
@@ -474,7 +484,7 @@ void printSymbol (Symbol s) {
         printf("%.*s ", (int)s.word.len, s.word.data);
     else if (s.type == SOURCE)
         printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
-    else if (s.type == LIST || s.type == FUNCTION) {
+    else if (s.type == LIST || s.type == FUNCTION || s.type == SCOPE) {
         printf("( ");
         for(List *l = s.value.list; l != NULL; l = l->next) {
             printSymbol(l->val);
@@ -818,7 +828,7 @@ Symbol specialSym(Symbol s) {
     return s;
 }
 
-void eval (List *body, RunEnv *env);
+void eval (Symbol body, RunEnv *env);
 
 void evalSym (Symbol insym, RunEnv *env) {
     if(dbg) {
@@ -841,12 +851,12 @@ void evalSym (Symbol insym, RunEnv *env) {
         return;
     }
 
-    Symbol s = find(insym.word, env->variables);
+    Symbol s = findVar(env, insym.word);
     if(s.type != NOTHING) {
         if(s.type == BUILTIN) {
             s.value.builtin(env);
         } else if(s.type == FUNCTION) {
-            eval(s.value.list, env);
+            eval(s, env);
         } else {
             env->stack = cons(refsym(s), env->stack);
         }
@@ -861,24 +871,28 @@ void evalSym (Symbol insym, RunEnv *env) {
     }
 }
 
-void eval (List *body, RunEnv *env) {
-    List *oldvars = env->variables;
-    for(List *cur = body; cur != NULL; cur = cur->next) {
+void eval (Symbol body, RunEnv *env) {
+    env->scopeStack = cons((Symbol) {
+                             .word = (body.word.len > 0)
+                                                ?body.word
+                                                :constString("(eval)"),
+                             .type = SCOPE,
+                             .value.list = (body.word.len > 0)
+                                                ?NULL
+                                                :env->scopeStack->val.value.list },
+                            env->scopeStack);
+
+    for(List *cur = body.value.list; cur != NULL; cur = cur->next) {
         evalSym(cur->val, env);
     }
-    if(env->variables != oldvars) {
-        List *cur = env->variables;
-        while(cur->next != oldvars) {
-            cur = cur->next;
-        }
-        cur->next = NULL;
-        freeList(env->variables);
-        env->variables = oldvars;
-    }
+
+    pop(&(env->scopeStack));
 }
 
 void run_source(Source root, List **vars) {
-    RunEnv env = { .stack = NULL, .variables = *vars };
+    RunEnv env = { .stack = NULL,
+                   .globals = *vars,
+                   .scopeStack = consList(NULL, NULL) };
 
     uint symbols_count = count_symbols(root);
 
@@ -893,12 +907,12 @@ void run_source(Source root, List **vars) {
             continue;
         }
         
-        Symbol val = find(current, env.variables);
+        Symbol val = findVar(&env, current);
 
         if(val.type == BUILTIN) {
             val.value.builtin(&env);
         } else if (val.type == FUNCTION) {
-            eval(val.value.list, &env);
+            eval(val, &env);
         } else if (val.type == NOTHING) {
             env.stack = cons(specialSym((Symbol){
                                     .word = current,
@@ -908,7 +922,7 @@ void run_source(Source root, List **vars) {
             env.stack = cons(refsym(val), env.stack);
         }
 
-        *vars = env.variables;
+        *vars = env.globals;
     }
 
     if(env.stack != NULL) {
@@ -1039,7 +1053,8 @@ Symbol implicitMap(RunEnv *env, void (*self) (RunEnv *)) {
                          };
             ans = cons(sym, ans);
             RunEnv inenv = {.stack = ans,
-                          .variables = env->variables};
+                            .globals = env->globals,
+                            .scopeStack = env->scopeStack };
             self(&inenv);
 
             free_StringArray(s.value.array);
@@ -1053,7 +1068,8 @@ Symbol implicitMap(RunEnv *env, void (*self) (RunEnv *)) {
         for(List *cur = s.value.list; cur != NULL; cur=cur->next) {
             ans = cons(cur->val, ans);
             RunEnv inenv = {.stack = ans,
-                          .variables = env->variables};
+                            .globals = env->globals,
+                            .scopeStack = env->scopeStack};
             self(&inenv);
         }
         return (Symbol) {
@@ -1168,9 +1184,9 @@ void builtin_eval (RunEnv *env) {
     List *args = getArgs(env, 1, (int[]){ LIST });
     argsOrWarn(args);
 
-    List *body = pop(&args).value.list;
-    eval(body, env);
-    freeList(body);
+    Symbol sym = pop(&args);
+    eval(sym, env);
+    freeList(sym.value.list);
 }
 
 void builtin_dbgon (RunEnv *env) {
@@ -1200,7 +1216,7 @@ void builtin_in (RunEnv *env) {
     Symbol ref = pop(&args);
 
     for(List *opt = options; opt != NULL; opt = opt->next) {
-        Symbol sym = find(opt->val.word, env->variables);
+        Symbol sym = findVar(env, opt->val.word);
         if(sym.type == NOTHING) sym = opt->val;
 
         if(symbolEq(sym, ref)) {
@@ -1404,10 +1420,12 @@ void builtin_assign (RunEnv *env) {
     Symbol val = pop(&args);
 
 
-    env->variables = cons((Symbol) {
-                    .word = name.word,
-                    .type = val.type,
-                    .value = val.value }, env->variables);
+    env->scopeStack->val.value.list
+        = cons((Symbol) {
+                .word = name.word,
+                .type = val.type,
+                .value = val.value }, 
+            env->scopeStack->val.value.list);
 }
 
 void evalListExpr(List *listExpr) {
@@ -1447,7 +1465,7 @@ bool evalCondexpr (Symbol expr, RunEnv *env) {
     if(env->stack == NULL) return false;
 
     if(expr.type == LIST) {
-        eval(expr.value.list, env);
+        eval(expr, env);
         Symbol ret = pop(&(env->stack));
         if(ret.type != BOOLEAN) {
             fprintf(stderr, "evalCondexpr() wrong return value.\n");
@@ -1455,7 +1473,7 @@ bool evalCondexpr (Symbol expr, RunEnv *env) {
         }
         return ret.value.boolean;
     } else {
-        Symbol ref = find(expr.word, env->variables);
+        Symbol ref = findVar(env, expr.word);
         if(ref.type == NOTHING)
             return symbolEq(expr, (env->stack)->val);
         return symbolEq(ref, (env->stack)->val);
@@ -1476,7 +1494,7 @@ void builtin_match (RunEnv *env) {
         if(evalCondexpr(rules->val, env)) {
             if(rules->next->val.word.len == 0
                 && rules->next->val.type == LIST) {
-                eval(rules->next->val.value.list, env);
+                eval(rules->next->val, env);
             } else {
                 env->stack = cons(rules->next->val, env->stack);
             }
@@ -1491,9 +1509,9 @@ void builtin_match (RunEnv *env) {
         // TODO: Why len == 0??
         if(rules->val.word.len == 0
             && rules->val.type == LIST) {
-            List *body = pop(&rules).value.list;
+            Symbol body = pop(&rules);
             eval(body, env);
-            freeList(body);
+            freeList(body.value.list);
         } else {
             env->stack = cons(pop(&rules), env->stack);
         }
@@ -1503,29 +1521,31 @@ void builtin_match (RunEnv *env) {
 }
 
 void builtin_if (RunEnv *env) {
-    List *ifb = NULL, *elseb = NULL;
-    bool which;
-
     List *args = getArgs(env, 3, (int[]) { LIST, LIST, BOOLEAN });
     if(args != NULL) {
-        ifb = pop(&args).value.list;
-        elseb = pop(&args).value.list;
-        which = pop(&args).value.boolean;
+        Symbol ifb = pop(&args);
+        Symbol elseb = pop(&args);
+        bool which = pop(&args).value.boolean;
+
+        if(which)
+            eval(ifb, env);
+        else
+            eval(elseb, env);
+
+        freeList(ifb.value.list);
+        freeList(elseb.value.list);
     } else {
         args = getArgs(env, 2, (int[]) { LIST, BOOLEAN });
         argsOrWarn(args);
-        ifb = pop(&args).value.list;
-        which = pop(&args).value.boolean;
-    }
+        Symbol ifb = pop(&args);
+        bool which = pop(&args).value.boolean;
+        
+        if(which) {
+            eval(ifb, env);
+        }
 
-    if(which) {
-        eval(ifb, env);
-    } else if(elseb != NULL) {
-        eval(elseb, env);
+        freeList(ifb.value.list);
     }
-    
-    freeList(ifb);
-    freeList(elseb);
 }
 
 void builtin_eq (RunEnv *env) {
@@ -1662,8 +1682,8 @@ void builtin_defun (RunEnv *env) {
     Symbol sym = pop(&args);
     args->val.type = FUNCTION;
     args->val.word = sym.word;
-    args->next = env->variables;
-    env->variables = args;
+    args->next = env->globals;
+    env->globals = args;
 }
 
 void builtin_reverse (RunEnv *env) {
@@ -1685,14 +1705,14 @@ void builtin_doCounting (RunEnv *env) {
 
     int to = pop(&args).value.integer;
     int from = pop(&args).value.integer;
-    List *commands = pop(&args).value.list;
+    Symbol commands = pop(&args);
 
     for(int i = from; i <= to; i++) {
         env->stack = consInt(i, env->stack);
         eval(commands, env);
     }
 
-    freeList(commands);
+    freeList(commands.value.list);
 }
     
 void builtin_doWhile (RunEnv *env) {
@@ -1702,8 +1722,8 @@ void builtin_doWhile (RunEnv *env) {
         return;
     }
 
-    List *condition = pop(&args).value.list;
-    List *body = pop(&args).value.list;
+    Symbol condition = pop(&args);
+    Symbol body = pop(&args);
     List *ans;
 
     do {
@@ -1714,14 +1734,14 @@ void builtin_doWhile (RunEnv *env) {
             fprintf(stderr, "Wrong condition for doWhile()\n");
             printSymbol((env->stack)->val);
 
-            freeList(body);
-            freeList(condition);
+            freeList(body.value.list);
+            freeList(condition.value.list);
             return;
         }
     } while (ans->val.value.boolean);
 
-    freeList(body);
-    freeList(condition);
+    freeList(body.value.list);
+    freeList(condition.value.list);
 }
 
 void builtin_whileDo (RunEnv *env) {
@@ -1731,18 +1751,18 @@ void builtin_whileDo (RunEnv *env) {
         return;
     }
 
-    List *condition = pop(&args).value.list;
-    List *body = pop(&args).value.list;
+    Symbol condition = pop(&args);
+    Symbol body = pop(&args);
  
     while (true) {
         eval(condition, env);
         List *ans = getArgs(env, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for whileDo()\n");
-            printSymbol((env->stack)->val);
+            printSymbol(env->stack->val);
 
-            freeList(body);
-            freeList(condition);
+            freeList(body.value.list);
+            freeList(condition.value.list);
             return;
         }
         if(!pop(&ans).value.boolean) break;
@@ -1750,8 +1770,8 @@ void builtin_whileDo (RunEnv *env) {
         eval(body, env);
     }
 
-    freeList(body);
-    freeList(condition);
+    freeList(body.value.list);
+    freeList(condition.value.list);
 }
 
 void builtin_content (RunEnv *env) {
@@ -1878,6 +1898,7 @@ void builtin_substr(RunEnv *env) {
 }
 
 List *varstash = NULL;
+List *scopestash = NULL;
 List *stackstash = NULL;
 uint quot_depth = 0;
 
@@ -1899,7 +1920,8 @@ void builtin_isString(RunEnv *env) {
 
 void builtin_unquote (RunEnv *env) {
     if(--quot_depth == 0) {
-        env->variables = varstash;
+        env->globals = varstash;
+        env->scopeStack = scopestash;
         env->stack = consList(stackstash, reverseList(env->stack));
     } else {
         env->stack = cons((Symbol) {
@@ -1918,12 +1940,14 @@ void builtin_nested_quote (RunEnv *env) {
 }
 
 void builtin_quote (RunEnv *env) {
-    varstash = env->variables; 
+    varstash = env->globals; 
+    scopestash = env->scopeStack;
     stackstash = env->stack;
     quot_depth++;
 
     env->stack = NULL;
-    env->variables = cons((Symbol) {
+    env->scopeStack = NULL;
+    env->globals = cons((Symbol) {
 /*(*/             .word = constString(")"),
                   .type = BUILTIN,
                   .value.builtin = &builtin_unquote},

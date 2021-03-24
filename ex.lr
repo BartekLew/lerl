@@ -1,7 +1,13 @@
 ("void builtin_" 1>>| "(RunEnv *env)" 3lst reverse) C-builtin-head fn
 ((pop .) (empty? not) whileDo ;1) .* fn
 
-(action assign
+(k assign
+ k 0 > (;1 2 + k 1 - recurstest) ?) recurstest fn
+
+10 3 recurstest ;1
+    16 != ("Internal error: recurtest failed!" .ln 1 exit) ? ;1
+
+(action assign 
         (action !@) (next nothing !=) whileDo) forList fn
 
 (load content cut quote isString)
