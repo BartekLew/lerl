@@ -382,6 +382,7 @@ Symbol pop(List **l) {
 
     List *old = *l;
     *l = (*l)->next;
+    if(*l != NULL) (*l)->refs++;
     if(old->refs-- == 1)
         free(old);
 
@@ -853,7 +854,7 @@ void evalSym (Symbol insym, RunEnv *env) {
     }
 
     if(insym.type != ITSELF) {
-        env->stack = cons(insym, env->stack);
+        env->stack = cons(refsym(insym), env->stack);
         return;
     }
 
@@ -1155,12 +1156,12 @@ List *rewriteList(List *tgt, List *vars, List *varlim) {
             *wcur = cons(cur->val, NULL);
         } else {
             List *varc;
-            for(varc = vars; varc != varlim; varc = varc->next) {
+            for(varc = vars; varc != varlim && varc != NULL; varc = varc->next) {
                 if(stringEq(varc->val.word, cur->val.word))
                     break;
             }
 
-            if(varc == varlim)
+            if(varc == varlim || varc == NULL)
                 *wcur = cons(cur->val, NULL);
             else
                 *wcur = cons(varc->val, NULL);
@@ -1593,7 +1594,6 @@ void builtin_match (RunEnv *env) {
         return;
 
     List *rules = pop(&args).value.list;
-    evalListExpr(rules);
     args->next = env->stack;
     env->stack = args;
 
@@ -1607,20 +1607,17 @@ void builtin_match (RunEnv *env) {
             }
             return;
         }
-        List *nextcur = rules->next->next;
-        rules->next->next = NULL;
-        rules = nextcur;
+        rules = rules->next->next;
     }
 
     if(rules != NULL){
         // TODO: Why len == 0??
         if(rules->val.word.len == 0
             && rules->val.type == LIST) {
-            Symbol body = pop(&rules);
+            Symbol body = rules->val;
             eval(body, env);
-            freeList(body.value.list);
         } else {
-            env->stack = cons(pop(&rules), env->stack);
+            env->stack = cons(rules->val, env->stack);
         }
     }
     else
@@ -2001,7 +1998,6 @@ void builtin_substr(RunEnv *env) {
 List *varstash = NULL;
 List *scopestash = NULL;
 List *stackstash = NULL;
-uint quot_depth = 0;
 
 void builtin_isString(RunEnv *env) {
     if(env->stack == NULL) {
@@ -2020,31 +2016,23 @@ void builtin_isString(RunEnv *env) {
 }
 
 void builtin_unquote (RunEnv *env) {
-    if(--quot_depth == 0) {
-        env->globals = varstash;
+    List *top = reverseList(env->stack);
+    env->stack = consList(pop(&stackstash).value.list, top);
+    if(stackstash == NULL) {
         env->scopeStack = scopestash;
-        env->stack = consList(stackstash, reverseList(env->stack));
-    } else {
-        env->stack = cons((Symbol) {
-  /*(*/         .word = constString(")"), 
-                .type = ITSELF},
-                env->stack);
+        env->globals = varstash;
     }
 }
 
 void builtin_nested_quote (RunEnv *env) {
-    quot_depth++;
-    env->stack = cons((Symbol) {
-                .word = constString("("), //)
-                .type = ITSELF},
-                env->stack);
+    stackstash = consList(stackstash, env->stack);
+    env->stack = NULL;
 }
 
 void builtin_quote (RunEnv *env) {
     varstash = env->globals; 
     scopestash = env->scopeStack;
-    stackstash = env->stack;
-    quot_depth++;
+    stackstash = consList(NULL, env->stack);
 
     env->stack = NULL;
     env->scopeStack = NULL;
