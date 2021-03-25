@@ -180,13 +180,13 @@ StringArray mkStringArray(size_t size, const char **vals) {
     return ans;
 }
 
-void printStringArray(String name, StringArray arr) {
-    printf("ARRAY %.*s: ", (int)name.len, name.data);
+void printStringArray(FILE *out, String name, StringArray arr) {
+    fprintf(out, "ARRAY %.*s: ", (int)name.len, name.data);
     for(uint i = 0; i < arr.len; i++) {
         String s = arr.data[i];
-        printf("%.*s ", (int)s.len, s.data);
+        fprintf(out, "%.*s ", (int)s.len, s.data);
     }
-    printf("\n");
+    fprintf(out, "\n");
 }
 
 void builtin_load(RunEnv *env);
@@ -234,7 +234,7 @@ void builtin_lst (RunEnv *env);
 void builtin_pop (RunEnv *env);
 void builtin_isEmpty (RunEnv *env);
 void builtin_inject (RunEnv *env);
-void printSymbol (Symbol s);
+void printSymbol (FILE *out, Symbol s);
 
 typedef struct List {
     Symbol      val;
@@ -251,9 +251,9 @@ List *cons(Symbol value, List *before) {
     };
 
     #ifdef DEBUG_MEM
-    printf("cons %p: ", ans);
-    printSymbol(value);
-    printf("\n");
+    fprintf(stderr, "cons %p: ", ans);
+    printSymbol(stderr, value);
+    fprintf(stderr, "\n");
     #endif 
 
     return ans;
@@ -263,9 +263,9 @@ void freeList (List *l) {
     if(l == NULL) return;
 
     #ifdef DEBUG_MEM
-    printf("freeing %p (%u refs): ", l, l->refs);
-    printSymbol(l->val);
-    printf("\n");
+    fprintf(stderr, "freeing %p (%u refs): ", l, l->refs);
+    printSymbol(stderr, l->val);
+    fprintf(stderr, "\n");
     #endif
 
     if(l->refs-- > 1) return;
@@ -373,9 +373,9 @@ Symbol pop(List **l) {
         return Nothing;
 
     #ifdef DEBUG_MEM
-    printf("popping %p: ", *l);
-    printSymbol((*l)->val);
-    printf("\n");
+    fprintf(stderr, "popping %p: ", *l);
+    printSymbol(stderr, (*l)->val);
+    fprintf(stderr, "\n");
     #endif
 
     Symbol s = (*l)->val;
@@ -477,33 +477,33 @@ Symbol findVar(RunEnv *env, String name) {
     return find(name, env->globals);
 }
 
-void printSymbol (Symbol s) {
-    if(s.type == ARRAY) printStringArray(s.word, s.value.array);    
+void printSymbol (FILE *out, Symbol s) {
+    if(s.type == ARRAY) printStringArray(out, s.word, s.value.array);    
     else if (s.type == STRING)
-        printf("\"%.*s\" ", (int)s.value.string.len, s.value.string.data);
+        fprintf(out, "\"%.*s\" ", (int)s.value.string.len, s.value.string.data);
     else if (s.type == ITSELF)
-        printf("%.*s ", (int)s.word.len, s.word.data);
+        fprintf(out, "%.*s ", (int)s.word.len, s.word.data);
     else if (s.type == SOURCE)
-        printf("SOURCE %.*s ", (int)s.word.len, s.word.data);
+        fprintf(out, "SOURCE %.*s ", (int)s.word.len, s.word.data);
     else if (s.type == LIST || s.type == FUNCTION || s.type == SCOPE) {
-        printf("( ");
+        fprintf(out, "( ");
         for(List *l = s.value.list; l != NULL; l = l->next) {
-            printSymbol(l->val);
+            printSymbol(out, l->val);
         }
-        printf(")");
+        fprintf(out, ")");
     } else if (s.type == CHAR) {
-        printf("'%c' ", s.value.character);
+        fprintf(out, "'%c' ", s.value.character);
     } else if (s.type == INT) {
-        printf("%d ", s.value.integer);
+        fprintf(out, "%d ", s.value.integer);
     }
     else
-        printf ("%.*s ", (int)s.word.len, s.word.data);
+        fprintf(out, "%.*s ", (int)s.word.len, s.word.data);
 }
 
 void printList (List *l) {
-    printSymbol((Symbol) {.word = constString(""),
-                          .type = LIST,
-                          .value.list = l });
+    printSymbol(stdout, (Symbol) {.word = constString(""),
+                                  .type = LIST,
+                                  .value.list = l });
 }
 
 List *initial_global_symtab (int argc, const char **argv) {
@@ -838,13 +838,13 @@ void eval (Symbol body, RunEnv *env);
 
 void evalSym (Symbol insym, RunEnv *env) {
     if(dbg) {
-        printf("eval: ");
-        printSymbol(insym);
+        fprintf(stderr, "eval: ");
+        printSymbol(stderr, insym);
         if(env->stack) {
-            putc(' ', stdout);
-            printSymbol(env->stack->val);
+            putc(' ', stderr);
+            printSymbol(stderr, env->stack->val);
         }
-        putc('\n', stdout);
+        putc('\n', stderr);
     }
 
     if(stringEq(insym.word, Nothing.word)) {
@@ -871,9 +871,9 @@ void evalSym (Symbol insym, RunEnv *env) {
     }
 
     if(dbg && env->stack) {
-        printf(" >> ");
-        printSymbol(env->stack->val);
-        putc('\n', stdout);
+        fprintf(stderr, " >> ");
+        printSymbol(stderr, env->stack->val);
+        putc('\n', stderr);
     }
 }
 
@@ -933,7 +933,7 @@ void run_source(Source root, List **vars) {
 
     if(env.stack != NULL) {
         printf("\n");
-        printSymbol((Symbol) {
+        printSymbol(stdout, (Symbol) {
             .word=constString("stack"),
             .type=LIST,
             .value.list = env.stack});
@@ -1816,7 +1816,7 @@ void builtin_doWhile (RunEnv *env) {
         ans = getArgs(env, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for doWhile()\n");
-            printSymbol((env->stack)->val);
+            printSymbol(stderr, (env->stack)->val);
 
             freeList(body.value.list);
             freeList(condition.value.list);
@@ -1843,7 +1843,7 @@ void builtin_whileDo (RunEnv *env) {
         List *ans = getArgs(env, 1, (int[]){BOOLEAN});
         if(ans == NULL) {
             fprintf(stderr, "Wrong condition for whileDo()\n");
-            printSymbol(env->stack->val);
+            printSymbol(stderr, env->stack->val);
 
             freeList(body.value.list);
             freeList(condition.value.list);
@@ -1866,7 +1866,7 @@ void builtin_content (RunEnv *env) {
     const char *opar = "( ", *cpar = " )";
 
     if(s.type == LIST) {
-        printSymbol(s);
+        printSymbol(stdout, s);
         freeList(s.value.list);
     } else if(s.type == ARRAY) {
         StringArray arr = s.value.array;
