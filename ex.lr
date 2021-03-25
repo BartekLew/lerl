@@ -16,3 +16,15 @@
         ;1 reverse builtins assign
 
 builtins (C-builtin-head .* #nl .) forList ;
+
+(funnam assign
+ (void builtin_ ## funnam (RunEnv *env) {
+  })
+    inject) bultin fn
+
+(empty? not (pop .
+             (pop ## = (#space . .) (;1 pop .) ?) (empty? not) whileDo
+             #nl .) ?) .CCode fn
+
+"load" bultin .CCode ;
+

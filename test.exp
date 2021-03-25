@@ -3,3 +3,4 @@ void builtin_content(RunEnv *env)
 void builtin_cut(RunEnv *env)
 void builtin_quote(RunEnv *env)
 void builtin_isString(RunEnv *env)
+void builtin_load ( RunEnv *env ) { }

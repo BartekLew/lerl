@@ -233,6 +233,7 @@ void builtin_toStr (RunEnv *env);
 void builtin_lst (RunEnv *env);
 void builtin_pop (RunEnv *env);
 void builtin_isEmpty (RunEnv *env);
+void builtin_inject (RunEnv *env);
 void printSymbol (Symbol s);
 
 typedef struct List {
@@ -513,6 +514,11 @@ List *initial_global_symtab (int argc, const char **argv) {
     arr.data[1] = constString("\n");
     arr.data[2] = constString("\t");
 
+    ans = cons( (Symbol) {
+                    .word = constString("inject"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_inject
+                }, ans);
     ans = cons( (Symbol) {
                     .word = constString("stash"),
                     .type = BUILTIN,
@@ -1104,6 +1110,84 @@ bool symbolEq (Symbol a, Symbol b) {
         fprintf(stderr, "TODO: symbolEq for type %d.\n", a.type);
         return false;
     }
+}
+
+// rewriteList and inject are copying and in-place variants
+// of inject builtin. They work on tgt list, they look for
+// symbols in vars-varlim list part (used for top-scope
+// variables, no globals). If they find any, they are
+// replaced with found values.
+List *rewriteList(List *tgt, List *vars, List *varlim) {
+    if(tgt == NULL) return NULL;
+
+    List *ans = NULL;
+    List **wcur = &ans;
+    for(List *cur = tgt; cur != NULL; cur = cur->next) {
+        if(cur->val.type == LIST) {
+            *wcur = consList(NULL, rewriteList(cur->val.value.list, vars, varlim));
+        } else if (cur->val.type != ITSELF) {
+            if(cur->val.type == ARRAY)
+                cur->val.value.array.refs++;
+
+            *wcur = cons(cur->val, NULL);
+        } else {
+            List *varc;
+            for(varc = vars; varc != varlim; varc = varc->next) {
+                if(stringEq(varc->val.word, cur->val.word))
+                    break;
+            }
+
+            if(varc == varlim)
+                *wcur = cons(cur->val, NULL);
+            else
+                *wcur = cons(varc->val, NULL);
+        }
+        wcur = &((*wcur)->next);
+    }
+
+    return ans;
+}
+
+List *inject(List *tgt, List *vars, List *varlim) {
+    for(List *cur = tgt; cur != NULL; cur = cur->next) {
+        Symbol sym = cur->val;
+        if(sym.type == LIST) {
+            cur->val.value.list = inject(sym.value.list, vars, varlim);
+        } else if(sym.type == ITSELF) {
+            List *vcur;
+            for(vcur = vars; vcur != varlim && vcur != NULL; vcur = vcur->next) {
+                if(stringEq(vcur->val.word, sym.word)) {
+                    break;
+                }
+            }
+
+            if(vcur != varlim && vcur != NULL) {
+                cur->val = vcur->val;
+            }
+        }
+    }
+
+    return tgt;
+}
+
+void builtin_inject (RunEnv *env) {
+    List *args = getArgs(env, 1, (int[]) { LIST });
+    argsOrWarn(args);
+
+    List *lst = pop(&args).value.list;
+    List *vars = env->scopeStack->val.value.list;
+    List *varlim = (env->scopeStack->next)
+                        ?env->scopeStack->next->val.value.list
+                        :NULL;
+
+    List *ans = NULL;
+    if(lst->refs > 1) {
+        ans = rewriteList(lst, vars, varlim);
+        lst->refs--;
+    } else {
+        ans = inject(lst, vars, varlim);    
+    }
+    env->stack = consList(env->stack, ans);
 }
 
 void builtin_isEmpty (RunEnv *env) {
