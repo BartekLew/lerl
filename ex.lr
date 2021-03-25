@@ -17,7 +17,7 @@
 
 builtins (C-builtin-head .* #nl .) forList ;
 
-(funnam assign
+(pop >str funnam assign 
  (void builtin_ ## funnam (RunEnv *env) {
   })
     inject) bultin fn
@@ -26,5 +26,5 @@ builtins (C-builtin-head .* #nl .) forList ;
              (pop ## = (#space . .) (;1 pop .) ?) (empty? not) whileDo
              #nl .) ?) .CCode fn
 
-"load" bultin .CCode ;
+(load (src)) bultin .CCode ;
 

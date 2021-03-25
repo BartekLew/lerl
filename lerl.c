@@ -1086,10 +1086,33 @@ Symbol implicitMap(RunEnv *env, void (*self) (RunEnv *)) {
         return s;
 }
 
+void printSymbols (FILE *out, List* lst) {
+    for(List *vcur = lst; vcur != NULL; vcur = vcur->next) {
+        fprintf(out, "%.*s = ", (int)vcur->val.word.len, vcur->val.word.data);
+        printSymbol(out, vcur->val);
+        fprintf(out, " ");
+    }
+}
+
+void printStackTrace (FILE *out, RunEnv *env) {
+    fprintf(out, "Stack trace:\n");
+    uint i = 0;
+    for(List *cur = env->scopeStack; cur != NULL; cur = cur->next) {
+        fprintf(out, "    %u: %.*s\n      * vars: ", i++, (int)cur->val.word.len, cur->val.word.data);
+        printSymbols(out, cur->val.value.list);
+        fprintf(out, "\n");
+    }
+
+    fprintf(out, "\nCurrent stack: ");
+    printSymbols(out, env->stack);
+    fprintf(out, "\n");
+}
+
 #define argsOrWarn(ARGS) \
     if(ARGS == NULL) { \
         fprintf(stderr, "%s: wrong argument list\n", \
                 __FUNCTION__); \
+        printStackTrace(stderr, env); \
         exit(1); \
         return; \
     }
