@@ -1712,7 +1712,21 @@ void builtin_at (RunEnv *env) {
 
 void builtin_len (RunEnv *env) {
     List *args = getArgs(env, 1, (int[]) { STRING });
-    argsOrWarn(args);
+    if(args == NULL) {
+        args = getArgs(env, 1, (int[]) { LIST });
+        argsOrWarn(args);
+
+        List *l = args->val.value.list;
+        uint i = 0;
+        while(l != NULL) {
+            i++;
+            l = l->next;
+        }
+
+        args->next = env->stack;
+        env->stack = consInt(i, args);
+        return;
+    }
 
     String s = args->val.value.string;
     args->next = env->stack;
