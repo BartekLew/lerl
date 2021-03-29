@@ -194,6 +194,7 @@ void builtin_content(RunEnv *env);
 void builtin_cut(RunEnv *env);
 void builtin_quote(RunEnv *env);
 void builtin_isString(RunEnv *env);
+void builtin_isList(RunEnv *env);
 void builtin_doWhile(RunEnv *env);
 void builtin_whileDo(RunEnv *env);
 void builtin_defun(RunEnv *env);
@@ -574,6 +575,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("string?"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_isString
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("list?"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_isList
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("empty?"),
@@ -1225,7 +1231,8 @@ void builtin_isEmpty (RunEnv *env) {
 void builtin_pop (RunEnv *env) {
     if(env->stack == NULL || env->stack->val.type != LIST) {
         fprintf(stderr, "builtin_pop: wrong arg\n");
-        return;
+        printStackTrace(stderr, env);
+        exit(1);
     }
 
     List **lptr = &(env->stack->val.value.list);
@@ -2023,6 +2030,22 @@ void builtin_isString(RunEnv *env) {
         pop(&(env->stack));
         env->stack = consBool(false, env->stack);
     } else if (type == STRING) {
+        env->stack = consBool(true, env->stack);
+    } else {
+        env->stack = consBool(false, env->stack);
+    }
+}
+
+void builtin_isList(RunEnv *env) {
+    if(env->stack == NULL) {
+        consBool(false, env->stack);
+        return;
+    }
+    int type = (env->stack)->val.type;
+    if(type == NOTHING) {
+        pop(&(env->stack));
+        env->stack = consBool(false, env->stack);
+    } else if (type == LIST) {
         env->stack = consBool(true, env->stack);
     } else {
         env->stack = consBool(false, env->stack);

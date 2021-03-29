@@ -8,7 +8,8 @@
     16 != ("Internal error: recurtest failed!" .ln 1 exit) ? ;1
 
 (action assign 
-        (action !@) (next nothing !=) whileDo) forList fn
+        (action !@) (next nothing !=) whileDo
+        ;1 ;1) forList fn
 
 (load content cut quote isString)
      (pop >str 1 stash)
@@ -17,14 +18,19 @@
 
 builtins (C-builtin-head .* #nl .) forList ;
 
-(pop >str funnam assign 
+(pop >str       funnam assign 
+ pop len        argc assign ;1
+ (;1 ANY 1 stash) 1 argc doCounting ;1 types assign 
  (void builtin_ ## funnam (RunEnv *env) {
+      List *args = getArgs(env, argc , (int[]) { @@ types });
   })
     inject) bultin fn
 
-(empty? not (pop .
-             (pop ## = (#space . .) (;1 pop .) ?) (empty? not) whileDo
-             #nl .) ?) .CCode fn
+(pop .
+  (pop ((## =) (;1 pop .)
+        (list?) ("(" . .CCode ")" .)
+        (@@ =) (;1 pop pop . (", " . .) forList)
+               (#space . .)) match) (empty? not) whileDo
+  ;1) .CCode fn 
 
-(load (src)) bultin .CCode ;
-
+(load (src)) bultin .CCode
