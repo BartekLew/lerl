@@ -146,7 +146,7 @@ typedef struct RunEnv RunEnv;
 
 struct Symbol {
     String  word;
-    enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, ITSELF, BOOLEAN, SCOPE, NOTHING, ANY } type;
+    enum { STRING, INT, CHAR, BUILTIN, FUNCTION, ARRAY, SOURCE, LIST, SYMBOL, BOOLEAN, SCOPE, NOTHING, ANY } type;
     union {
         String      string;
         void        (*builtin) (RunEnv *env);
@@ -483,8 +483,8 @@ void printSymbol (FILE *out, Symbol s) {
     if(s.type == ARRAY) printStringArray(out, s.word, s.value.array);    
     else if (s.type == STRING)
         fprintf(out, "\"%.*s\" ", (int)s.value.string.len, s.value.string.data);
-    else if (s.type == ITSELF)
-        fprintf(out, "%.*s ", (int)s.word.len, s.word.data);
+    else if (s.type == SYMBOL)
+        fprintf(out, "%.*s ", (int)s.value.string.len, s.value.string.data);
     else if (s.type == SOURCE)
         fprintf(out, "SOURCE %.*s ", (int)s.word.len, s.word.data);
     else if (s.type == LIST || s.type == FUNCTION || s.type == SCOPE) {
@@ -820,18 +820,20 @@ Symbol strToInt(String src) {
 }
 
 Symbol specialSym(Symbol s) {
-    if(s.type == ITSELF) {
-        if(s.word.len == 2
-                && s.word.data[0] == '#') {
+    if(s.type == SYMBOL) {
+        if(s.value.string.len == 2
+                && s.value.string.data[0] == '#') {
             return (Symbol) {
                 .word = s.word,
                     .type = INT,
                     .value.integer = (int) s.word.data[1] };
         } else if (s.word.data[0] == '\'') {
+            String str = {.data = s.word.data + 1,
+                          .len = s.word.len - 1};
             return (Symbol) {
-                .word = {.data = s.word.data + 1,
-                         .len = s.word.len - 1},
-                .type = ITSELF};
+                .word = str,
+                .type = SYMBOL,
+                .value.string = str};
         }
         Symbol sn = strToInt(s.word);
         if(sn.type == INT) {
@@ -859,7 +861,7 @@ void evalSym (Symbol insym, RunEnv *env) {
         return;
     }
 
-    if(insym.type != ITSELF) {
+    if(insym.type != SYMBOL) {
         env->stack = cons(refsym(insym), env->stack);
         return;
     }
@@ -929,7 +931,8 @@ void run_source(Source root, List **vars) {
         } else if (val.type == NOTHING) {
             env.stack = cons(specialSym((Symbol){
                                     .word = current,
-                                    .type = ITSELF}),
+                                    .type = SYMBOL,
+                                    .value.string = current}),
                          env.stack);
         } else {
             env.stack = cons(refsym(val), env.stack);
@@ -1062,7 +1065,8 @@ Symbol implicitMap(RunEnv *env, void (*self) (RunEnv *)) {
         for(uint i = 0; i < arr.len; i++) {
             Symbol sym = (Symbol) {
                             .word = arr.data[i],
-                            .type = ITSELF
+                            .type = SYMBOL,
+                            .value.string = arr.data[i]
                          };
             ans = cons(sym, ans);
             RunEnv inenv = {.stack = ans,
@@ -1132,7 +1136,7 @@ bool symbolEq (Symbol a, Symbol b) {
         return a.value.character == b.value.character;
     } else if (a.type == STRING) {
         return stringEq(a.value.string, b.value.string);
-    } else if (a.type == ITSELF) {
+    } else if (a.type == SYMBOL) {
         return stringEq(a.word, b.word);
     } else if (a.type == NOTHING) {
         return true;
@@ -1155,7 +1159,7 @@ List *rewriteList(List *tgt, List *vars, List *varlim) {
     for(List *cur = tgt; cur != NULL; cur = cur->next) {
         if(cur->val.type == LIST) {
             *wcur = consList(NULL, rewriteList(cur->val.value.list, vars, varlim));
-        } else if (cur->val.type != ITSELF) {
+        } else if (cur->val.type != SYMBOL) {
             if(cur->val.type == ARRAY)
                 cur->val.value.array.refs++;
 
@@ -1183,7 +1187,7 @@ List *inject(List *tgt, List *vars, List *varlim) {
         Symbol sym = cur->val;
         if(sym.type == LIST) {
             cur->val.value.list = inject(sym.value.list, vars, varlim);
-        } else if(sym.type == ITSELF) {
+        } else if(sym.type == SYMBOL) {
             List *vcur;
             for(vcur = vars; vcur != varlim && vcur != NULL; vcur = vcur->next) {
                 if(stringEq(vcur->val.word, sym.word)) {
@@ -1280,17 +1284,17 @@ void builtin_toSym (RunEnv *env) {
 
     String str = pop(&args).value.string;
     env->stack = cons ((Symbol) { .word = str,
-                              .type = ITSELF },
+                              .type = SYMBOL,
+                              .value.string = str},
                    env->stack);
 }
 
 void builtin_toStr (RunEnv *env) {
-    List *args = getArgs(env, 1, (int[]){ ITSELF });
+    List *args = getArgs(env, 1, (int[]){ SYMBOL });
     argsOrWarn(args);
 
     Symbol sym = pop(&args);
     sym.type = STRING;
-    sym.value.string = sym.word;
 
     env->stack = cons (sym, env->stack);
 }
@@ -1528,12 +1532,19 @@ void builtin_clone (RunEnv *env) {
 }
 
 void builtin_assign (RunEnv *env) {
-    List *args = getArgs(env, 2, (int[]) { ITSELF, ANY });
+    List *args = getArgs(env, 2, (int[]) { ANY, ANY });
     argsOrWarn(args);
 
     Symbol name = pop(&args);
     Symbol val = pop(&args);
 
+    if(name.type != SYMBOL
+       || !stringEq(name.word, name.value.string)) {
+        fprintf(stderr, "Trying to redefine value of %.*s.\n",
+                name.word.len, name.word.data);
+        printStackTrace(stderr, env);
+        exit(1); 
+    } 
 
     env->scopeStack->val.value.list
         = cons((Symbol) {
@@ -1798,13 +1809,18 @@ void builtin_stash (RunEnv *env) {
 }
 
 void builtin_defun (RunEnv *env) {
-    List *args = getArgs(env, 2, (int[]){ITSELF, LIST});
-    if(args == NULL) {
-        fprintf(stderr, "wrong arguments for fn(Itself, List)\n");
-        return;
+    List *args = getArgs(env, 2, (int[]){ANY, LIST});
+    argsOrWarn(args);
+    
+    Symbol sym = pop(&args);
+    if(sym.type != SYMBOL
+        || !stringEq(sym.word, sym.value.string)) {
+        fprintf(stderr, "Trying to redefine value of %.*s.\n",
+                sym.word.len, sym.word.data);
+        printStackTrace(stderr, env);
+        exit(1);
     }
 
-    Symbol sym = pop(&args);
     args->val.type = FUNCTION;
     args->val.word = sym.word;
     args->next = env->globals;
@@ -1928,8 +1944,8 @@ void builtin_content (RunEnv *env) {
     else if(s.type == STRING) {
         String str = s.value.string;
         printf("%.*s", (int)str.len, str.data);
-    } else if(s.type == ITSELF) {
-        String str = s.word;
+    } else if(s.type == SYMBOL) {
+        String str = s.value.string;
         printf("%.*s", (int)str.len, str.data);
     } else if(s.type == INT) {
         int n = s.value.integer;
@@ -1944,9 +1960,9 @@ void builtin_content (RunEnv *env) {
 
 void builtin_load (RunEnv *env) {
     String fname;
-    List *args = getArgs(env, 1, (int[]) { ITSELF });
+    List *args = getArgs(env, 1, (int[]) { SYMBOL });
     if(args != NULL)
-        fname = pop(&args).word;
+        fname = pop(&args).value.string;
     else {
         args = getArgs(env, 1, (int[]) { STRING });
         argsOrWarn(args);
