@@ -235,6 +235,7 @@ void builtin_lst (RunEnv *env);
 void builtin_pop (RunEnv *env);
 void builtin_isEmpty (RunEnv *env);
 void builtin_inject (RunEnv *env);
+void builtin_extract (RunEnv *env);
 void printSymbol (FILE *out, Symbol s);
 
 typedef struct List {
@@ -502,8 +503,8 @@ void printSymbol (FILE *out, Symbol s) {
         fprintf(out, "%.*s ", (int)s.word.len, s.word.data);
 }
 
-void printList (List *l) {
-    printSymbol(stdout, (Symbol) {.word = constString(""),
+void printList (FILE* out, List *l) {
+    printSymbol(out, (Symbol) {.word = constString(""),
                                   .type = LIST,
                                   .value.list = l });
 }
@@ -520,6 +521,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("inject"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_inject
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("extract"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_extract
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("stash"),
@@ -1204,6 +1210,54 @@ List *inject(List *tgt, List *vars, List *varlim) {
     return tgt;
 }
 
+void wrong_schema_error(List *schema, List *source) {
+    fprintf(stderr, "not matching schema:\n  source:");
+    printList(stderr, source);
+    fprintf(stderr, "\n  schema:");
+    printList(stderr, schema);
+    fprintf(stderr, "\n");
+
+    exit(1);
+}
+
+void extract(List *source, List *schema, RunEnv *env) {
+    List **vars =  &(env->scopeStack->val.value.list);
+    while(source != NULL || schema != NULL) {
+        if(source != NULL && schema != NULL) {
+            if(schema->val.type == LIST) {
+                if(source->val.type != LIST) {
+                    printf("-- %d %d ---\n", source->val.type, schema->val.type);
+                    wrong_schema_error(schema, source);
+                } else {
+                    extract(source->val.value.list,
+                            schema->val.value.list,
+                            env);
+                }
+            } else {
+                *vars = cons((Symbol) {
+                                .word = schema->val.word,
+                                .type = source->val.type,
+                                .value = source->val.value
+                            }, *vars);
+            }
+        } else
+            wrong_schema_error(schema, source);
+
+        source = source->next;
+        schema = schema->next;
+    }
+}
+
+void builtin_extract (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) { LIST, LIST });
+    argsOrWarn(args);
+
+    List *schema = pop(&args).value.list;
+    List *source = pop(&args).value.list;
+
+    extract(source, schema, env);
+}
+
 void builtin_inject (RunEnv *env) {
     List *args = getArgs(env, 1, (int[]) { LIST });
     argsOrWarn(args);
@@ -1315,7 +1369,7 @@ void builtin_dbgon (RunEnv *env) {
 void builtin_dbgoff (RunEnv *env) {
     dbg = false;
     printf("Stack:\n");
-    printList(env->stack);
+    printList(stderr, env->stack);
     printf("\n*************\n");
 }
 
@@ -1541,7 +1595,7 @@ void builtin_assign (RunEnv *env) {
     if(name.type != SYMBOL
        || !stringEq(name.word, name.value.string)) {
         fprintf(stderr, "Trying to redefine value of %.*s.\n",
-                name.word.len, name.word.data);
+                (int)name.word.len, name.word.data);
         printStackTrace(stderr, env);
         exit(1); 
     } 
@@ -1816,7 +1870,7 @@ void builtin_defun (RunEnv *env) {
     if(sym.type != SYMBOL
         || !stringEq(sym.word, sym.value.string)) {
         fprintf(stderr, "Trying to redefine value of %.*s.\n",
-                sym.word.len, sym.word.data);
+                (int) sym.word.len, sym.word.data);
         printStackTrace(stderr, env);
         exit(1);
     }
