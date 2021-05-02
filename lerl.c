@@ -199,6 +199,7 @@ void builtin_doWhile(RunEnv *env);
 void builtin_whileDo(RunEnv *env);
 void builtin_defun(RunEnv *env);
 void builtin_stash(RunEnv *env);
+void builtin_append(RunEnv *env);
 void builtin_reverse(RunEnv *env);
 void builtin_drop (RunEnv *env);
 void builtin_dropOne (RunEnv *env);
@@ -531,6 +532,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .word = constString("stash"),
                     .type = BUILTIN,
                     .value.builtin = &builtin_stash
+                }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("append"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_append
                 }, ans);
     ans = cons( (Symbol) {
                     .word = constString("reverse"),
@@ -1836,6 +1842,26 @@ void builtin_dropOne (RunEnv *env) {
     Symbol s = pop(&(env->stack));
     if(s.type == LIST)
         freeList(s.value.list);
+}
+
+void builtin_append (RunEnv *env) {
+    List *args = getArgs(env, 2, (int []) { ANY, LIST });
+    argsOrWarn(args);
+
+    List *newstack = args->next;
+    args->next = NULL;
+    if(newstack->val.value.list == NULL) {
+        newstack->val.value.list = args;
+    } else {
+        List *cur;
+        for(cur = newstack->val.value.list;
+            cur->next != NULL;
+            cur = cur->next);
+            
+        cur->next = args;
+    }
+
+    env->stack = newstack;
 }
 
 void builtin_stash (RunEnv *env) {
