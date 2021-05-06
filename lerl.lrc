@@ -10,7 +10,7 @@
 
 ( start assign
   start ( 1 + ) 
-        ( j assign j @ chartype ( Number = Other = ;1 j ) or ) doWhile
+        ( j assign j @ chartype ( Number = Other = Quote = ;1 j ) or ) doWhile
   end assign
   start end substr ) readSym fn
 

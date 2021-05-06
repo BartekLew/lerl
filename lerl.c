@@ -237,6 +237,7 @@ void builtin_pop (RunEnv *env);
 void builtin_isEmpty (RunEnv *env);
 void builtin_inject (RunEnv *env);
 void builtin_extract (RunEnv *env);
+void builtin_cons (RunEnv *env);
 void printSymbol (FILE *out, Symbol s);
 
 typedef struct List {
@@ -798,6 +799,11 @@ List *initial_global_symtab (int argc, const char **argv) {
                     .type = BUILTIN,
                     .value.builtin = &builtin_defun
                 }, ans);
+    ans = cons( (Symbol) {
+                    .word = constString("cons"),
+                    .type = BUILTIN,
+                    .value.builtin = &builtin_cons
+                }, ans);
 
     return ans;
 }
@@ -1254,6 +1260,17 @@ void extract(List *source, List *schema, RunEnv *env) {
     }
 }
 
+void builtin_cons (RunEnv *env) {
+    List *args = getArgs(env, 2, (int[]) {ANY, LIST});
+    argsOrWarn(args);
+
+    Symbol consee = pop(&args);
+    List **lst = &(args->val.value.list);
+
+    *lst = cons(consee, *lst);
+    env->stack = args;
+}
+
 void builtin_extract (RunEnv *env) {
     List *args = getArgs(env, 2, (int[]) { LIST, LIST });
     argsOrWarn(args);
@@ -1310,8 +1327,9 @@ void builtin_pop (RunEnv *env) {
         (*lptr)->next = env->stack;
         env->stack = *lptr;
         *lptr = tail;
-    } else
+    } else {
         env->stack = cons(pop(lptr), env->stack);
+    }
 }
 
 void builtin_lst (RunEnv *env) {
@@ -1374,9 +1392,9 @@ void builtin_dbgon (RunEnv *env) {
 
 void builtin_dbgoff (RunEnv *env) {
     dbg = false;
-    printf("Stack:\n");
+    fprintf(stderr, "Stack:\n");
     printList(stderr, env->stack);
-    printf("\n*************\n");
+    fprintf(stderr, "\n*************\n");
 }
 
 void builtin_exit (RunEnv *env) {
@@ -1452,6 +1470,7 @@ void builtin_or (RunEnv *env) {
 
 void builtin_not (RunEnv *env) {
     List *args = getArgs(env, 1, (int[]) { BOOLEAN });
+    argsOrWarn(args);
     env->stack = consBool(!(pop(&args).value.boolean), env->stack);
 }
 

@@ -33,4 +33,20 @@ builtins (C-builtin-head .* #nl .) forList ;
                (#space . .)) match) (empty? not) whileDo
   ;1) .CCode fn 
 
-(load (src)) bultin .CCode
+(pop (load_file (;1 .CFun x assign (load_file ( x )) inject )
+      push      (;1 .CFun x assign (Source src = x ;
+                                       env->stack = cons((Symbol) {
+                                                      .word = src ,
+                                                      .type = SOURCE,
+                                                      .value = src },
+                                                env->stack);) inject)
+               ()) match 1 >>| ;1) .CFun fn
+
+(load (src)
+    push load_file src) bultin .CCode
+
+#nl .
+
+(push load_file "boo") .CFun .CCode
+
+(a b c d e f) ( pop 1 stash pop ;1 pop 1 stash ) (empty? not) doWhile ;1 () cons reverse 

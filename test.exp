@@ -3,4 +3,6 @@ void builtin_content(RunEnv *env)
 void builtin_cut(RunEnv *env)
 void builtin_quote(RunEnv *env)
 void builtin_isString(RunEnv *env)
-void builtin_load ( RunEnv *env ) { }
+void builtin_load(RunEnv *env) { List *args = getArgs(env, 1 ,(int[]) {ANY }) ; }
+Source src =(load_file(boo)) ; env->stack = cons(( Symbol ) { .word = src , .type = SOURCE, .value = src }, env->stack) ;
+( ( a c d f ( )))
